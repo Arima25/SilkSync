@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DaoSync - Solo Traveler Itinerary App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚄 DaoSync</h1>
+            <p class="tagline">Your Solo Travel Companion in China</p>
+        </header>
+
+        <main>
+            <section class="search-section">
+                <h2>Plan Your Journey</h2>
+                <form id="searchForm">
+                    <div class="form-group">
+                        <label for="name">Your Name:</label>
+                        <input type="text" id="name" name="name" required placeholder="Enter your name">
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="origin">From:</label>
+                            <select id="origin" name="origin" required>
+                                <option value="">Select origin</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="destination">To:</label>
+                            <select id="destination" name="destination" required>
+                                <option value="">Select destination</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="budget">Budget (¥):</label>
+                            <input type="number" id="budget" name="budget" required min="0" step="10" placeholder="Enter your budget">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="travelDate">Travel Date:</label>
+                            <input type="date" id="travelDate" name="travelDate" required>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn-primary">Search Routes & Find Travel Buddies</button>
+                </form>
+            </section>
+
+            <section id="resultsSection" class="results-section" style="display: none;">
+                <h2>Available Routes</h2>
+                
+                <div id="hsrResults" class="route-category">
+                    <h3>🚄 High-Speed Rail (HSR)</h3>
+                    <div id="hsrList" class="route-list"></div>
+                </div>
+                
+                <div id="flightResults" class="route-category">
+                    <h3>✈️ Flights</h3>
+                    <div id="flightList" class="route-list"></div>
+                </div>
+            </section>
+
+            <section id="matchesSection" class="matches-section" style="display: none;">
+                <h2>👥 Travel Buddies</h2>
+                
+                <div id="routeMatches" class="match-category">
+                    <h3>Same Route Travelers</h3>
+                    <div id="routeMatchList" class="match-list"></div>
+                </div>
+                
+                <div id="destinationMatches" class="match-category">
+                    <h3>Same Destination Travelers</h3>
+                    <div id="destinationMatchList" class="match-list"></div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 DaoSync - Connecting Solo Travelers</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
