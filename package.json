@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "run": "^1.5.0"
+    "run": "^1.5.0",
+    "@rnmapbox/maps": "^10.1.0"
   }
 }

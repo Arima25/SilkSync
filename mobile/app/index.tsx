@@ -1,21 +1,6 @@
-import { View, StyleSheet } from "react-native";
-import Mapbox from "@rnmapbox/maps";
-
-Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_PUBLIC_TOKEN || "");
+import { Redirect } from 'expo-router';
 
 export default function Index() {
-  return (
-    <View style={styles.page}>
-      <Mapbox.MapView style={styles.map} />
-    </View>
-  );
-}
+    return <Redirect href="/(tabs)" />;
 
-const styles = StyleSheet.create({
-  page: {
-    flex: 1,
-  },
-  map: {
-    flex: 1,
-  },
-});
+}
