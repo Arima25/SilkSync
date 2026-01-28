@@ -1,0 +1,16 @@
+# Python
+venv/
+__pycache__/
+
+# Node / Expo
+node_modules/
+.expo/
+
+# macOS
+.DS_Store
+
+# VS Code
+*.code-workspace
+
+# env files
+.env
