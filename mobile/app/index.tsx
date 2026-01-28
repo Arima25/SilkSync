@@ -1,15 +1,21 @@
-import { View, Platform } from "react-native";
-import { WebView } from "react-native-webview";
+import { View, StyleSheet } from "react-native";
+import Mapbox from "@rnmapbox/maps";
+
+Mapbox.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_PUBLIC_TOKEN || "");
 
 export default function Index() {
-  const url =
-    Platform.OS === "ios"
-      ? "http://192.168.192.212:5001"
-      : "http://10.0.2.2:5001";
-
   return (
-    <View style={{ flex: 1 }}>
-      <WebView source={{ uri: url }} />
+    <View style={styles.page}>
+      <Mapbox.MapView style={styles.map} />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  page: {
+    flex: 1,
+  },
+  map: {
+    flex: 1,
+  },
+});
