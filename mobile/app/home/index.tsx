@@ -4,10 +4,6 @@ import { useRouter } from "expo-router";
 export default function Home() {
   const router = useRouter();
 
-  const handleLogout = () => {
-    router.replace("/auth/signup");
-  };
-
   return (
     <View
       style={{
@@ -21,7 +17,10 @@ export default function Home() {
         Home
       </Text>
 
-      <Button title="Log out" onPress={handleLogout} />
+      <Button
+        title="Log out"
+        onPress={() => router.replace("/auth/signup")}
+      />
     </View>
   );
 }

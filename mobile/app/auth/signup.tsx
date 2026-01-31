@@ -15,7 +15,6 @@ export default function Signup() {
     try {
       await createUserWithEmailAndPassword(auth, email, password);
 
-      // Later: save profile info to Firestore
       router.replace("/(tabs)");
     } catch (err: any) {
       alert(err.message);
@@ -26,11 +25,33 @@ export default function Signup() {
     <View style={styles.container}>
       <Text style={styles.title}>Create Account</Text>
 
-      <TextInput placeholder="First Name" style={styles.input} onChangeText={setFirstName} />
-      <TextInput placeholder="Last Name" style={styles.input} onChangeText={setLastName} />
-      <TextInput placeholder="Birthday (YYYY-MM-DD)" style={styles.input} onChangeText={setBirthday} />
-      <TextInput placeholder="Email" style={styles.input} onChangeText={setEmail} autoCapitalize="none" />
-      <TextInput placeholder="Password" style={styles.input} secureTextEntry onChangeText={setPassword} />
+      <TextInput
+        placeholder="First Name"
+        style={styles.input}
+        onChangeText={setFirstName}
+      />
+      <TextInput
+        placeholder="Last Name"
+        style={styles.input}
+        onChangeText={setLastName}
+      />
+      <TextInput
+        placeholder="Birthday (YYYY-MM-DD)"
+        style={styles.input}
+        onChangeText={setBirthday}
+      />
+      <TextInput
+        placeholder="Email"
+        style={styles.input}
+        autoCapitalize="none"
+        onChangeText={setEmail}
+      />
+      <TextInput
+        placeholder="Password"
+        style={styles.input}
+        secureTextEntry
+        onChangeText={setPassword}
+      />
 
       <Button title="Create Account" onPress={handleSignup} />
     </View>
