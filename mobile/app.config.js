@@ -10,7 +10,7 @@ export default {
     newArchEnabled: true,
 
     ios: {
-      bundleIdentifier: "com.anonymous.mobile",
+      bundleIdentifier: "com.bevgo.silksync",
       supportsTablet: true,
       infoPlist: {
         NSAppTransportSecurity: {
@@ -20,7 +20,7 @@ export default {
     },
 
     android: {
-      package: "com.anonymous.mobile",
+      package: "com.bevgo.silksync",
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
         foregroundImage: "./assets/images/android-icon-foreground.png",
@@ -39,6 +39,14 @@ export default {
     plugins: [
       "expo-router",
       [
+        "expo-build-properties",
+        {
+          ios: {
+            deploymentTarget: "16.0",
+          },
+        },
+      ],
+      [
         "expo-splash-screen",
         {
           image: "./assets/images/splash-icon.png",
@@ -54,7 +62,6 @@ export default {
         "@rnmapbox/maps",
         {
           RNMapboxMapsImpl: "mapbox",
-          RNMapboxMapsDownloadToken: process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN,
         },
       ],
       [
