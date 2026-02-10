@@ -1,38 +1,75 @@
-import { StyleSheet, Image, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Image, StyleSheet, Button } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { useState } from "react";
+import { signOut } from "firebase/auth";
+import { auth } from "../../firebase/firebase";
+import { router } from "expo-router";
 
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+export default function Profile() {
+  const [image, setImage] = useState<string | null>(null);
 
-export default function ProfileScreen() {
+  async function pickImage() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+    }
+  }
+
+  async function handleLogout() {
+    await signOut(auth);
+    router.replace("/auth");
+  }
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.headerImage}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Profile</ThemedText>
-      </ThemedView>
-      <ThemedView>
-        <ThemedText>Profile details coming soon.</ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <View style={styles.container}>
+      <TouchableOpacity onPress={pickImage} style={styles.avatar}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.avatarImage} />
+        ) : (
+          <Text style={styles.avatarText}>+</Text>
+        )}
+      </TouchableOpacity>
+
+      <Text style={styles.info}>Profile details coming soon</Text>
+
+      <View style={{ marginTop: "auto" }}>
+        <Button title="Log Out" color="red" onPress={handleLogout} />
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
+    padding: 24,
   },
-  titleContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  avatar: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#eee",
+    alignSelf: "center",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+  },
+  avatarImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  avatarText: {
+    fontSize: 40,
+    color: "#888",
+  },
+  info: {
+    textAlign: "center",
+    fontSize: 16,
   },
 });

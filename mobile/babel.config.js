@@ -2,7 +2,6 @@ module.exports = function (api) {
   api.cache(true);
   return {
     presets: ['babel-preset-expo'],
-<<<<<<< HEAD
     plugins: [
       [
         'module-resolver',
@@ -13,9 +12,7 @@ module.exports = function (api) {
           },
         },
       ],
+      'react-native-reanimated/plugin',
     ],
-=======
-    plugins: ['react-native-reanimated/plugin'],
->>>>>>> sprints2UI
   };
 };
