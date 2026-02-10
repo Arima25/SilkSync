@@ -1,9 +1,37 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
+  const [rate, setRate] = useState<number | null>(null); 
+  const [loading, setLoading] = useState(true);
+
+  const fetchRate = async () => {
+    try {
+      const response = await fetch('http://10.0.2.2:5001/api/convert-currency', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: 'USD', to: 'CNY', amount: 1 }),
+      });
+      const data = await response.json();
+      if (!data.error) {
+        setRate(data.converted_amount); // store the converted amount for 1 USD
+      } else {
+        console.error(data.error);
+      }
+    } catch (err) {
+      console.error('Error fetching rate:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRate();
+  }, []);
+
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -94,9 +122,11 @@ export default function HomeScreen() {
                  <View style={styles.refreshIconWrapper}>
                     <Ionicons name="sync" size={20} color="#64748B" />
                  </View>
-                 <Text style={styles.rateText}>1 USD = 7.24 CNY</Text>
+                 <Text style={styles.rateText}>
+                  {loading ? 'Loading...' : `1 USD = ${rate} CNY`}
+                 </Text>
             </View>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={fetchRate}>
                 <Text style={styles.liveRateLink}>LIVE RATE</Text>
             </TouchableOpacity>
         </View>
