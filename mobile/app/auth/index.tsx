@@ -1,20 +1,16 @@
 import { View, Text, TextInput, Button, StyleSheet } from "react-native";
 import { useState } from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../../firebase/firebase";
-import { router } from "expo-router";
+import { router, Link } from "expo-router";
 
-export default function Signup() {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [birthday, setBirthday] = useState("");
+export default function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  async function handleSignup() {
+  async function handleSignIn() {
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-
+      await signInWithEmailAndPassword(auth, email, password);
       router.replace("/(tabs)");
     } catch (err: any) {
       alert(err.message);
@@ -23,45 +19,37 @@ export default function Signup() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Create Account</Text>
+      <Text style={styles.title}>Sign In</Text>
 
-      <TextInput
-        placeholder="First Name"
-        style={styles.input}
-        onChangeText={setFirstName}
-      />
-      <TextInput
-        placeholder="Last Name"
-        style={styles.input}
-        onChangeText={setLastName}
-      />
-      <TextInput
-        placeholder="Birthday (YYYY-MM-DD)"
-        style={styles.input}
-        onChangeText={setBirthday}
-      />
       <TextInput
         placeholder="Email"
         style={styles.input}
         autoCapitalize="none"
+        value={email}
         onChangeText={setEmail}
       />
+
       <TextInput
         placeholder="Password"
         style={styles.input}
         secureTextEntry
+        value={password}
         onChangeText={setPassword}
       />
 
-      <Button title="Create Account" onPress={handleSignup} />
+      <Button title="Sign In" onPress={handleSignIn} />
+
+      <Link href="/auth/signup" style={styles.link}>
+        Don’t have an account? Create one
+      </Link>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 24,
     flex: 1,
+    padding: 24,
     justifyContent: "center",
   },
   title: {
@@ -74,4 +62,11 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 16,
   },
+  link: {
+    marginTop: 16,
+    color: "#007AFF",
+    fontSize: 17,
+    fontWeight: "400",
+    textAlign: "center",
+  },  
 });
