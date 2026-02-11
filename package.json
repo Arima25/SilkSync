@@ -2,6 +2,7 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
     "firebase": "^12.9.0",
-    "run": "^1.5.0"
+    "run": "^1.5.0",
+    "@rnmapbox/maps": "^10.1.0"
   }
 }
