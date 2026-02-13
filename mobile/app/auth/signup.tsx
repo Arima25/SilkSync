@@ -63,15 +63,20 @@ const styles = StyleSheet.create({
     padding: 24,
     flex: 1,
     justifyContent: "center",
+    backgroundColor: "#fff",
   },
   title: {
     fontSize: 28,
     fontWeight: "600",
     marginBottom: 24,
+    color: "#11181C",
   },
   input: {
     borderWidth: 1,
+    borderColor: "#ccc",
     padding: 12,
     marginBottom: 16,
+    color: "#11181C",
+    backgroundColor: "#fff",
   },
 });
