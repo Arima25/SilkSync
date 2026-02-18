@@ -1,12 +1,41 @@
 import { View, Text, TouchableOpacity, Image, StyleSheet, Button } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "../../firebase/firebase";
 import { router } from "expo-router";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { db } from "../../firebase/firebase";
 
 export default function Profile() {
   const [image, setImage] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadProfile() {
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const snap = await getDoc(doc(db, "users", user.uid));
+
+      if (snap.exists()) {
+        const data = snap.data();
+        setEmail(data.email);
+        if (data.avatar) {
+          setImage(data.avatar);
+        }
+      } else {
+        await setDoc(doc(db, "users", user.uid), {
+          email: user.email,
+          avatar: null,
+          createdAt: new Date(),
+        });
+        setEmail(user.email);
+      }
+    }
+
+    loadProfile();
+  }, []);
 
   async function pickImage() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -16,7 +45,15 @@ export default function Profile() {
     });
 
     if (!result.canceled) {
-      setImage(result.assets[0].uri);
+      const uri = result.assets[0].uri;
+      setImage(uri);
+
+      const user = auth.currentUser;
+      if (user) {
+        await updateDoc(doc(db, "users", user.uid), {
+          avatar: uri,
+        });
+      }
     }
   }
 
@@ -35,7 +72,7 @@ export default function Profile() {
         )}
       </TouchableOpacity>
 
-      <Text style={styles.info}>Profile details coming soon</Text>
+      <Text style={styles.info}>{email}</Text>
 
       <View style={{ marginTop: "auto" }}>
         <Button title="Log Out" color="red" onPress={handleLogout} />
