@@ -1,15 +1,24 @@
-import React, {useEffect, useState} from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from "expo-router";
+import { useRouter } from 'expo-router';
+import { useWallet } from '@/src/context/WalletContext';
 
 export default function HomeScreen() {
-  const [rate, setRate] = useState<number | null>(null); 
+  const router = useRouter();
+  const { deductFunds } = useWallet();
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseDescription, setExpenseDescription] = useState('');
+  
+  // Rate state
+  const [rate, setRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchRate = async () => {
     try {
+      setLoading(true);
       const response = await fetch('http://10.0.2.2:5001/api/convert-currency', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -32,6 +41,31 @@ export default function HomeScreen() {
     fetchRate();
   }, []);
 
+  const handleAddExpense = () => {
+    const amount = parseFloat(expenseAmount);
+    if (amount > 0) {
+      const description = expenseDescription.trim() || 'Expense';
+      const success = deductFunds(amount, description);
+      if (success) {
+        Alert.alert(
+          'Expense Recorded',
+          `$${amount.toFixed(2)} has been deducted for ${description}.`,
+          [{ text: 'OK' }]
+        );
+        setExpenseAmount('');
+        setExpenseDescription('');
+        setShowExpenseModal(false);
+      } else {
+        Alert.alert(
+          'Insufficient Funds',
+          'You do not have enough balance in your wallet.',
+          [{ text: 'OK' }]
+        );
+      }
+    } else {
+      Alert.alert('Invalid Amount', 'Please enter a valid expense amount.');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -111,13 +145,26 @@ export default function HomeScreen() {
                 <Text style={styles.functionSubtitle}>G102 • 14:45</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.functionCard}>
+            <TouchableOpacity style={styles.functionCard} onPress={() => setShowExpenseModal(true)}>
                 <View style={[styles.iconBox, { backgroundColor: '#D1FAE5' }]}>
                     <Ionicons name="cart-outline" size={28} color="#10B981" />
                 </View>
                 <Text style={styles.functionTitle}>Add Expense</Text>
                 <Text style={styles.functionSubtitle}>Tap to record</Text>
             </TouchableOpacity>
+        </View>
+
+        {/* Second Row of Core Functions */}
+        <View style={styles.functionsGrid}>
+            <TouchableOpacity style={styles.functionCard} onPress={() => router.push('/search' as any)}>
+                <View style={[styles.iconBox, { backgroundColor: '#FEF3C7' }]}>
+                    <Ionicons name="search-outline" size={28} color="#F59E0B" />
+                </View>
+                <Text style={styles.functionTitle}>Train Search</Text>
+                <Text style={styles.functionSubtitle}>Find routes</Text>
+            </TouchableOpacity>
+            
+            <View style={styles.functionCardPlaceholder} />
         </View>
 
         {/* Exchange Rate */}
@@ -136,6 +183,73 @@ export default function HomeScreen() {
         </View>
 
       </ScrollView>
+
+      {/* Add Expense Modal */}
+      <Modal
+        visible={showExpenseModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowExpenseModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Expense</Text>
+              <TouchableOpacity
+                onPress={() => setShowExpenseModal(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Enter the amount you spent and what it was for. This will be deducted from your wallet balance.
+            </Text>
+
+            <View style={styles.expenseInputWrapper}>
+              <Text style={styles.inputLabel}>Amount</Text>
+              <View style={styles.expenseInputContainer}>
+                <Text style={styles.dollarPrefix}>$</Text>
+                <TextInput
+                  style={styles.expenseInput}
+                  placeholder="0.00"
+                  placeholderTextColor="#ccc"
+                  keyboardType="numeric"
+                  value={expenseAmount}
+                  onChangeText={setExpenseAmount}
+                  autoFocus
+                />
+              </View>
+            </View>
+
+            <View style={styles.expenseInputWrapper}>
+              <Text style={styles.inputLabel}>Description (Optional)</Text>
+              <TextInput
+                style={styles.descriptionInput}
+                placeholder="e.g. Lunch, Taxi, Souvenirs"
+                placeholderTextColor="#9CA3AF"
+                value={expenseDescription}
+                onChangeText={setExpenseDescription}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.addExpenseButton,
+                !expenseAmount && styles.addExpenseButtonDisabled,
+              ]}
+              onPress={handleAddExpense}
+              disabled={!expenseAmount}
+            >
+              <Text style={styles.addExpenseButtonText}>Record Expense</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -418,5 +532,106 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#2DD4BF',
+  },
+
+  // Placeholder for grid alignment
+  functionCardPlaceholder: {
+    flex: 1,
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  expenseInputWrapper: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  expenseInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#2DD4BF',
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: '#F0FDFA',
+  },
+  descriptionInput: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#0F172A',
+    backgroundColor: '#F8FAFC',
+  },
+  dollarPrefix: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginRight: 8,
+  },
+  expenseInput: {
+    flex: 1,
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  addExpenseButton: {
+    backgroundColor: '#2DD4BF',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#2DD4BF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  addExpenseButtonDisabled: {
+    backgroundColor: '#ccc',
+    shadowOpacity: 0,
+  },
+  addExpenseButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

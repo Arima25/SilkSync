@@ -7,48 +7,22 @@ import {
   TouchableOpacity,
   ScrollView,
   SafeAreaView,
-  Modal,
-  KeyboardAvoidingView,
-  Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useWallet } from '@/src/context/WalletContext';
 
 const QUICK_AMOUNTS = [50, 100, 500];
 
-const TRANSACTIONS = [
-  {
-    id: '1',
-    title: 'HSR Ticket',
-    date: 'Sep 12 • 09:41 AM',
-    amount: -45.0,
-    icon: 'train-outline',
-  },
-  {
-    id: '2',
-    title: 'Blue Bottle Coffee',
-    date: 'Sep 11 • 04:20 PM',
-    amount: -5.5,
-    icon: 'cafe-outline',
-  },
-  {
-    id: '3',
-    title: 'Silk Road Hotel',
-    date: 'Sep 10 • 11:15 AM',
-    amount: -200.0,
-    icon: 'bed-outline',
-  },
-];
-
 export default function WalletScreen() {
-  const { balance, addFunds } = useWallet();
+  const router = useRouter();
+  const { balance, addFunds, transactions } = useWallet();
   const [selectedAmount, setSelectedAmount] = useState<number | null>(100);
   const [customAmount, setCustomAmount] = useState('');
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [cardNumber, setCardNumber] = useState('');
-  const [expiryDate, setExpiryDate] = useState('');
-  const [cvv, setCvv] = useState('');
-  const [cardName, setCardName] = useState('');
+
+  // Show only last 3 transactions for preview
+  const recentTransactions = transactions.slice(0, 3);
 
   const getDepositAmount = () => {
     if (customAmount) {
@@ -72,36 +46,17 @@ export default function WalletScreen() {
   const handleConfirmDeposit = () => {
     const amount = getDepositAmount();
     if (amount > 0) {
-      setShowPaymentModal(true);
-    }
-  };
-
-  const handlePaymentSubmit = () => {
-    const amount = getDepositAmount();
-    if (amount > 0 && cardNumber && expiryDate && cvv && cardName) {
       addFunds(amount);
-      setShowPaymentModal(false);
-      setCardNumber('');
-      setExpiryDate('');
-      setCvv('');
-      setCardName('');
+      Alert.alert(
+        'Deposit Successful',
+        `$${amount.toFixed(2)} has been added to your wallet.`,
+        [{ text: 'OK' }]
+      );
       setCustomAmount('');
       setSelectedAmount(100);
+    } else {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount to deposit.');
     }
-  };
-
-  const formatCardNumber = (value: string) => {
-    const cleaned = value.replace(/\D/g, '');
-    const formatted = cleaned.replace(/(\d{4})(?=\d)/g, '$1 ');
-    return formatted.substring(0, 19);
-  };
-
-  const formatExpiryDate = (value: string) => {
-    const cleaned = value.replace(/\D/g, '');
-    if (cleaned.length >= 2) {
-      return cleaned.substring(0, 2) + '/' + cleaned.substring(2, 4);
-    }
-    return cleaned;
   };
 
   return (
@@ -183,12 +138,12 @@ export default function WalletScreen() {
         <View style={styles.activitySection}>
           <View style={styles.activityHeader}>
             <Text style={styles.sectionLabel}>RECENT ACTIVITY</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/wallet/transactions' as any)}>
               <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           </View>
 
-          {TRANSACTIONS.map((transaction) => (
+          {recentTransactions.map((transaction) => (
             <View key={transaction.id} style={styles.transactionItem}>
               <View style={styles.transactionLeft}>
                 <View style={styles.transactionIcon}>
@@ -203,8 +158,11 @@ export default function WalletScreen() {
                   <Text style={styles.transactionDate}>{transaction.date}</Text>
                 </View>
               </View>
-              <Text style={styles.transactionAmount}>
-                -${Math.abs(transaction.amount).toFixed(2)}
+              <Text style={[
+                styles.transactionAmount,
+                transaction.amount > 0 ? styles.amountPositive : styles.amountNegative
+              ]}>
+                {transaction.amount > 0 ? '+' : '-'}${Math.abs(transaction.amount).toFixed(2)}
               </Text>
             </View>
           ))}
@@ -212,107 +170,6 @@ export default function WalletScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
-
-      {/* Payment Modal */}
-      <Modal
-        visible={showPaymentModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowPaymentModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Payment Method</Text>
-              <TouchableOpacity
-                onPress={() => setShowPaymentModal(false)}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={24} color="#333" />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.depositAmountText}>
-              Deposit Amount: ${getDepositAmount().toFixed(2)}
-            </Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Cardholder Name</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="John Doe"
-                placeholderTextColor="#999"
-                value={cardName}
-                onChangeText={setCardName}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Card Number</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="1234 5678 9012 3456"
-                placeholderTextColor="#999"
-                keyboardType="numeric"
-                maxLength={19}
-                value={cardNumber}
-                onChangeText={(value) => setCardNumber(formatCardNumber(value))}
-              />
-            </View>
-
-            <View style={styles.rowInputs}>
-              <View style={[styles.inputGroup, { flex: 1, marginRight: 12 }]}>
-                <Text style={styles.inputLabel}>Expiry Date</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="MM/YY"
-                  placeholderTextColor="#999"
-                  keyboardType="numeric"
-                  maxLength={5}
-                  value={expiryDate}
-                  onChangeText={(value) => setExpiryDate(formatExpiryDate(value))}
-                />
-              </View>
-              <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>CVV</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="123"
-                  placeholderTextColor="#999"
-                  keyboardType="numeric"
-                  maxLength={4}
-                  secureTextEntry
-                  value={cvv}
-                  onChangeText={setCvv}
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.payButton,
-                (!cardNumber || !expiryDate || !cvv || !cardName) &&
-                  styles.payButtonDisabled,
-              ]}
-              onPress={handlePaymentSubmit}
-              disabled={!cardNumber || !expiryDate || !cvv || !cardName}
-            >
-              <Ionicons name="lock-closed" size={18} color="#fff" />
-              <Text style={styles.payButtonText}>
-                Add ${getDepositAmount().toFixed(2)}
-              </Text>
-            </TouchableOpacity>
-
-            <Text style={styles.secureText}>
-              <Ionicons name="shield-checkmark" size={12} color="#666" /> Your
-              payment information is secure
-            </Text>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -489,88 +346,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a1a',
   },
-  bottomSpacer: {
-    height: 40,
+  amountPositive: {
+    color: '#10B981',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+  amountNegative: {
     color: '#1a1a1a',
   },
-  closeButton: {
-    padding: 4,
-  },
-  depositAmountText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2eb296',
-    textAlign: 'center',
-    marginBottom: 24,
-    padding: 12,
-    backgroundColor: 'rgba(46, 178, 150, 0.1)',
-    borderRadius: 8,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#666',
-    marginBottom: 8,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: '#E8E8E8',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#333',
-  },
-  rowInputs: {
-    flexDirection: 'row',
-  },
-  payButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2eb296',
-    paddingVertical: 16,
-    borderRadius: 12,
-    marginTop: 8,
-    gap: 8,
-  },
-  payButtonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  payButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  secureText: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 16,
+  bottomSpacer: {
+    height: 40,
   },
 });
