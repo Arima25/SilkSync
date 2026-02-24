@@ -2,6 +2,7 @@ import React, {useEffect, useState} from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from "expo-router";
 
 export default function HomeScreen() {
   const [rate, setRate] = useState<number | null>(null); 
@@ -45,7 +46,10 @@ export default function HomeScreen() {
                 <TouchableOpacity style={styles.iconButton}>
                     <Ionicons name="notifications-outline" size={24} color="#1A1A1A" />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.profileButton}>
+                <TouchableOpacity 
+                  style={styles.profileButton}
+                  onPress={() => router.push("/(tabs)/profile")}
+                  >
                      <View style={styles.profileAvatar}>
                         <Ionicons name="person" size={20} color="#2DD4BF" />
                      </View>
