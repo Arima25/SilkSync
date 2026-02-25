@@ -302,7 +302,7 @@ export default function Profile() {
               <Ionicons name="chevron-forward" size={20} color="#999" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingsItem}>
+            {/* <TouchableOpacity style={styles.settingsItem}>
               <Ionicons name="notifications-outline" size={22} color="#333" />
               <Text style={styles.settingsItemText}>Notifications</Text>
               <Ionicons name="chevron-forward" size={20} color="#999" />
@@ -318,7 +318,7 @@ export default function Profile() {
               <Ionicons name="help-circle-outline" size={22} color="#333" />
               <Text style={styles.settingsItemText}>Help & Support</Text>
               <Ionicons name="chevron-forward" size={20} color="#999" />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             <TouchableOpacity style={[styles.settingsItem, styles.logoutItem]} onPress={handleLogout}>
               <Ionicons name="log-out-outline" size={22} color="#EF4444" />

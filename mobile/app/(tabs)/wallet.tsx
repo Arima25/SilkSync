@@ -73,18 +73,19 @@ export default function WalletScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Balance Section */}
-        <View style={styles.balanceSection}>
-          <Text style={styles.balanceLabel}>TOTAL BALANCE</Text>
-          <View style={styles.balanceContainer}>
+        {/* Budget Remaining Section */}
+        <View style={styles.budgetRemainingSection}>
+          <Text style={styles.budgetLabel}>BUDGET REMAINING</Text>
+          <View style={styles.budgetContainer}>
             <Text style={styles.currencySymbol}>$</Text>
-            <Text style={styles.balanceAmount}>
+            <Text style={styles.budgetAmount}>
               {balance.toLocaleString('en-US', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
             </Text>
           </View>
+          <Text style={styles.budgetInfo}>Your current travel budget</Text>
         </View>
 
         {/* Add Money Section */}
@@ -221,6 +222,37 @@ const styles = StyleSheet.create({
     fontSize: 48,
     fontWeight: '700',
     color: '#1a1a1a',
+  },
+  budgetRemainingSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+    marginBottom: 16,
+    backgroundColor: '#F0F9F7',
+    borderRadius: 12,
+    marginHorizontal: 24,
+  },
+  budgetLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#999',
+    letterSpacing: 1.5,
+    marginBottom: 8,
+  },
+  budgetContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: 8,
+  },
+  budgetAmount: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#2eb296',
+  },
+  budgetInfo: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
   },
   addMoneySection: {
     paddingHorizontal: 24,

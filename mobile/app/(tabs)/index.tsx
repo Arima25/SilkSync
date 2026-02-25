@@ -4,13 +4,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useWallet } from '@/src/context/WalletContext';
+import * as Location from 'expo-location';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { deductFunds } = useWallet();
+  const { balance, deductFunds } = useWallet();
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseDescription, setExpenseDescription] = useState('');
+  const [currentCity, setCurrentCity] = useState('Loading...');
+  const [currentDistrict, setCurrentDistrict] = useState('Loading...');
   
   // Rate state
   const [rate, setRate] = useState<number | null>(null);
@@ -39,7 +42,41 @@ export default function HomeScreen() {
 
   useEffect(() => {
     fetchRate();
+    fetchUserLocation();
   }, []);
+
+  const fetchUserLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setCurrentCity('Location Denied');
+        setCurrentDistrict('Enable location access');
+        return;
+      }
+      const location = await Location.getCurrentPositionAsync({});
+      const { latitude, longitude } = location.coords;
+      
+      // Use Amap reverse geocoding API
+      const amapiKey = process.env.EXPO_PUBLIC_AMAP_ANDROID_API_KEY;
+      const response = await fetch(
+        `https://restapi.amap.com/v3/geocode/regeo?location=${longitude},${latitude}&key=${amapiKey}`
+      );
+      const data = await response.json();
+      
+      if (data.status === '1' && data.regeocode) {
+        const { city, district } = data.regeocode.addressComponent;
+        setCurrentCity(city || 'Unknown');
+        setCurrentDistrict(district || 'Unknown');
+      } else {
+        setCurrentCity('Location');
+        setCurrentDistrict('Not found');
+      }
+    } catch (err) {
+      console.error('Location error:', err);
+      setCurrentCity('Location');
+      setCurrentDistrict('Error getting location');
+    }
+  };
 
   const handleAddExpense = () => {
     const amount = parseFloat(expenseAmount);
@@ -77,9 +114,9 @@ export default function HomeScreen() {
                 <Text style={styles.headerTitle}>SilkSync</Text>
             </View>
             <View style={styles.headerIcons}>
-                <TouchableOpacity style={styles.iconButton}>
+                {/* <TouchableOpacity style={styles.iconButton}>
                     <Ionicons name="notifications-outline" size={24} color="#1A1A1A" />
-                </TouchableOpacity>
+                </TouchableOpacity> */}
                 <TouchableOpacity 
                   style={styles.profileButton}
                   onPress={() => router.push("/(tabs)/profile")}
@@ -93,30 +130,17 @@ export default function HomeScreen() {
 
         {/* Budget Card */}
         <View style={styles.card}>
-            <View style={styles.budgetHeader}>
-                <Text style={styles.cardLabel}>Total Budget Remaining</Text>
-                <View style={styles.percentBadge}>
-                    <Text style={styles.percentText}>65% SPENT</Text>
-                </View>
-            </View>
             <View style={styles.budgetMain}>
                 <Text style={styles.currencySymbol}>$</Text>
-                <Text style={styles.balanceMain}>1,240</Text>
-                <Text style={styles.balanceSecondary}> / ¥8,980</Text>
-            </View>
-            <View style={styles.progressBarContainer}>
-                <View style={[styles.progressBarFill, { width: '65%' }]} />
-            </View>
-            <View style={styles.budgetFooter}>
-                <Text style={styles.footerText}>Spent: ¥16,675</Text>
-                <Text style={styles.footerText}>Daily Avg: ¥550</Text>
+                <Text style={styles.balanceMain}>{balance.toLocaleString('en-US', { maximumFractionDigits: 2 })}</Text>
+                <Text style={styles.balanceSecondary}> / ¥{(balance * 7.2).toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
             </View>
         </View>
 
         {/* Location Section */}
         <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Current Location: Shanghai</Text>
-            <TouchableOpacity>
+            <Text style={styles.sectionTitle}>Current Location: {currentCity}</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/map' as any)}>
                 <Text style={styles.expandLink}>EXPAND MAP</Text>
             </TouchableOpacity>
         </View>
@@ -130,7 +154,7 @@ export default function HomeScreen() {
              </View>
              <View style={styles.locationOverlay}>
                 <Text style={styles.locationLabel}>CURRENT DISTRICT</Text>
-                <Text style={styles.locationValue}>Huangpu District</Text>
+                <Text style={styles.locationValue}>{currentDistrict}</Text>
              </View>
         </View>
 
@@ -192,7 +216,8 @@ export default function HomeScreen() {
         onRequestClose={() => setShowExpenseModal(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 40}
           style={styles.modalOverlay}
         >
           <View style={styles.modalContent}>
