@@ -3,6 +3,8 @@ import { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../../firebase/firebase";
 import { router } from "expo-router";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "../../firebase/firebase";
 
 export default function Signup() {
   const [firstName, setFirstName] = useState("");
@@ -13,8 +15,23 @@ export default function Signup() {
 
   async function handleSignup() {
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+  
+      const user = userCredential.user;
+  
+      await setDoc(doc(db, "users", user.uid), {
+        firstName,
+        lastName,
+        birthday,
+        email: user.email,
+        avatar: null,
+        createdAt: new Date(),
+      });
+  
       router.replace("/(tabs)");
     } catch (err: any) {
       alert(err.message);
