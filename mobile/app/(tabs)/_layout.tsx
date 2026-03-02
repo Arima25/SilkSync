@@ -63,6 +63,18 @@ export default function TabLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="search"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="chatRoom"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }

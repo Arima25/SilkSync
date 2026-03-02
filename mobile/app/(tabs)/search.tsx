@@ -9,10 +9,15 @@ import {
   Modal,
   Linking,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useRouter } from 'expo-router';
+import { useUser } from '../../src/context/UserContext';
+import { checkInToJourney } from '../../src/services/trainChatService';
 
 // Mock train data - will be replaced with backend API
 const MOCK_TRAINS = [
@@ -98,6 +103,9 @@ interface ValidationErrors {
 }
 
 export default function SearchScreen() {
+  const router = useRouter();
+  const { user, profile } = useUser();
+  
   const [searchState, setSearchState] = useState<SearchState>('initial');
   const [fromStation, setFromStation] = useState('');
   const [toStation, setToStation] = useState('');
@@ -107,6 +115,7 @@ export default function SearchScreen() {
   const [selectedTrain, setSelectedTrain] = useState<TrainData | null>(null);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [apiError, setApiError] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
 
   const validateForm = (): boolean => {
     const newErrors: ValidationErrors = {};
@@ -163,14 +172,73 @@ export default function SearchScreen() {
     setSelectedTrain(null);
   };
 
-  const handleCheckIn = () => {
-    // Open 12306 website or WeChat mini program
+  const handleBookTicket = () => {
+    // Open 12306 website for actual ticket booking
     const url = 'https://www.12306.cn/index/';
     Linking.canOpenURL(url).then((supported) => {
       if (supported) {
         Linking.openURL(url);
+      } else {
+        Alert.alert('Error', 'Unable to open 12306 website');
       }
     });
+  };
+
+  const handleCheckIn = async (train: TrainData) => {
+    if (!user || !profile) {
+      Alert.alert(
+        'Login Required',
+        'Please sign in to check in to a journey',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/auth') },
+        ]
+      );
+      return;
+    }
+
+    setCheckingIn(true);
+
+    try {
+      // Format date as YYYY-MM-DD
+      const formattedDate = departureDate.toISOString().split('T')[0];
+      
+      const checkInData = {
+        userId: user.uid,
+        userName: profile.displayName,
+        userPhoto: profile.photoURL,
+        trainNumber: train.id,
+        departureDate: formattedDate,
+        departureStation: train.departureStation,
+        arrivalStation: train.arrivalStation,
+        socialIntent: profile.socialIntent,
+      };
+
+      const response = await checkInToJourney(checkInData);
+
+      if (response.success) {
+        // Navigate to chat room with journey details
+        const params = new URLSearchParams({
+          trainNumber: train.id,
+          journeyId: response.journeyId,
+          departureStation: train.departureStation,
+          arrivalStation: train.arrivalStation,
+        });
+        const chatRoomPath = `/(tabs)/chatRoom?${params.toString()}`;
+        // @ts-expect-error - Route registered in _layout but not in type definitions
+        router.push(chatRoomPath);
+      }
+    } catch (error) {
+      console.error('Check-in error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unable to check in to this journey';
+      Alert.alert(
+        'Check-In Failed',
+        errorMessage + '. Please ensure the backend server is running.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setCheckingIn(false);
+    }
   };
 
   const handleTryDate = (daysOffset: number) => {
@@ -366,9 +434,19 @@ export default function SearchScreen() {
             >
               <Text style={styles.detailsButtonText}>Details</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.joinTripButton}>
-              <Ionicons name="add" size={16} color="#fff" />
-              <Text style={styles.joinTripButtonText}>Join Trip</Text>
+            <TouchableOpacity 
+              style={styles.joinTripButton}
+              onPress={() => handleCheckIn(train)}
+              disabled={checkingIn}
+            >
+              {checkingIn ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="add" size={16} color="#fff" />
+                  <Text style={styles.joinTripButtonText}>Join Trip</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -473,12 +551,34 @@ export default function SearchScreen() {
             ))}
           </View>
 
-          {/* Check-in Button */}
-          <TouchableOpacity style={styles.checkInButton} onPress={handleCheckIn}>
-            <Ionicons name="checkmark-circle" size={20} color="#fff" />
-            <Text style={styles.checkInButtonText}>Check-In to this Journey</Text>
-          </TouchableOpacity>
-          <Text style={styles.ticketNote}>TICKET VERIFICATION REQUIRED UPON ENTRY</Text>
+          {/* Action Buttons */}
+          <View style={styles.detailActionButtons}>
+            <TouchableOpacity 
+              style={styles.bookTicketButton} 
+              onPress={handleBookTicket}
+            >
+              <Ionicons name="cart" size={20} color="#fff" />
+              <Text style={styles.bookTicketButtonText}>Book Ticket</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.joinCommunityButton} 
+              onPress={() => handleCheckIn(selectedTrain)}
+              disabled={checkingIn}
+            >
+              {checkingIn ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="people" size={20} color="#fff" />
+                  <Text style={styles.joinCommunityButtonText}>Join Community</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.ticketNote}>
+            Book tickets on 12306 • Join fellow travelers in chat
+          </Text>
 
           {/* Train Info */}
           <View style={styles.trainInfoRow}>
@@ -962,6 +1062,41 @@ const styles = StyleSheet.create({
     color: '#64748B',
     width: 60,
     textAlign: 'right',
+  },
+  detailActionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8,
+  },
+  bookTicketButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3B82F6',
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  bookTicketButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  joinCommunityButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2DD4BF',
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  joinCommunityButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   checkInButton: {
     flexDirection: 'row',
