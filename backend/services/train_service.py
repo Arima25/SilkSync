@@ -53,7 +53,7 @@ async def call_mcp_tool(tool_name: str, arguments: dict):
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json, text/event-stream",
-                "mcp-session-id": session_id or ""
+                "mcp-session-id": session_id
             }
         )
         #print("STATUS:", res.status_code)
@@ -81,24 +81,6 @@ def format_train(train: dict) -> dict:
         "duration": train.get("duration"),
         "seats": bilingual_seats(train.get("seats", {}))
     }
-
-# Adds real ticket prices to a formatted train
-async def format_train_with_price(train: dict, from_station: str, to_station: str, train_date: str):
-    formatted = format_train(train)
-
-    try:
-        price_data = await query_ticket_price(
-            from_station,
-            to_station,
-            train_date,
-            train.get("train_no")
-        )
-
-        formatted["prices"] = price_data.get("prices", {})
-    except Exception:
-        formatted["prices"] = {}
-
-    return formatted
 
 def format_transfer(transfer: dict) -> dict:
     return {
@@ -173,7 +155,7 @@ async def get_route(from_station: str, to_station: str, train_date: str):
     direct_data = await query_tickets(from_station, to_station, train_date)
 
     if direct_data.get("success") and direct_data.get("trains"):
-        valid_trains = filter_valid_trains(direct_data.get("trains", []))
+        valid_trains = filter_valid_trains(direct_data["trains"])
         if valid_trains:
             return {
                 "type": "direct",
@@ -181,10 +163,7 @@ async def get_route(from_station: str, to_station: str, train_date: str):
                 "to": bilingual_station(to_station),
                 "date": train_date,
                 "count": len(valid_trains),
-                "trains": [
-                    await format_train_with_price(t, from_station, to_station, train_date)
-                    for t in valid_trains
-                ]
+                "trains": [format_train(t) for t in valid_trains]
             }
 
     transfer_data = await query_transfer(from_station, to_station, train_date)

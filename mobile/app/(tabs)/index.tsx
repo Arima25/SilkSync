@@ -18,16 +18,6 @@ export default function HomeScreen() {
   // Rate state
   const [rate, setRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  
-  const fetchBudget = async () => {
-    try {
-      const res = await fetch("http://10.0.2.2:5001/budget");
-      const data = await res.json();
-      console.log("Budget from backend:", data);
-    } catch (err) {
-      console.log("Backend connection error:", err);
-    }
-  };
 
   const fetchRate = async () => {
     try {
