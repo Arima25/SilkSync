@@ -5,13 +5,14 @@ from services.train_service import (
     query_transfer, get_train_stops, get_train_no,
     get_current_time, get_nearest_stations, get_route
 )
+from services.budget_service import calculate_trip_options
 import asyncio
 
 app = Flask(__name__)
 
-@app.route('/')
+@app.route("/")
 def index():
-    return render_template('index.html')
+    return {"message": "SilkSync API running"}
 
 # Currency Exchange
 @app.route("/api/convert-currency", methods=["POST"])
@@ -44,6 +45,51 @@ def convert_currency_api():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# ===============================
+# NEW ROUTE SEARCH + BUDGET ENGINE
+# ===============================
+
+@app.route("/search_route", methods=["POST"])
+def search_route():
+
+    data = request.json
+
+    from_station = data.get("from")
+    to_station = data.get("to")
+    date = data.get("date")
+    user_budget = float(data.get("budget", 0))
+
+    if not from_station or not to_station or not date:
+        return jsonify({"error": "Missing required parameters"}), 400
+
+    try:
+        # get train route data
+        route_data = asyncio.run(get_route(from_station, to_station, date))
+        print("ROUTE DATA:", route_data)
+        # Only run budget analysis if direct trains exist
+        budget_analysis = None
+
+        # normalize train list (direct vs transfer)
+        train_list = route_data.get("trains") or route_data.get("options")
+
+        if train_list:
+            first_train = train_list[0]
+
+            budget_analysis = calculate_trip_options(
+                first_train.get("prices", {}),
+                user_budget
+            )
+
+        return jsonify({
+            "route": route_data,
+            "budget_analysis": budget_analysis
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # Station Search (e.g. GET /api/trains/stations/search?q=beijing)
 @app.route("/api/trains/stations/search", methods=["GET"])
 def stations_search():
@@ -55,6 +101,7 @@ def stations_search():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 # Ticket Query (e.g. GET /api/trains/tickets?from_station=北京&to_station=上海&train_date=2026-03-15)
 @app.route("/api/trains/tickets", methods=["GET"])
@@ -70,6 +117,7 @@ def tickets():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+
 # Transfer query (e.g. GET /api/trains/transfer?from_station=成都&to_station=西宁&train_date=2026-03-15)
 @app.route("/api/trains/transfer", methods=["GET"])
 def transfer():
@@ -99,6 +147,7 @@ def train_stops(train_code):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 # China time (e.g. GET /api/trains/current-time)
 @app.route("/api/trains/current-time", methods=["GET"])
 def current_time():
@@ -107,6 +156,7 @@ def current_time():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 # Ticket Pricing
 @app.route("/api/trains/price", methods=["GET"])
@@ -123,6 +173,7 @@ def ticket_price():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+
 @app.route("/api/trains/train-no", methods=["GET"])
 def train_no():
     train_code = request.args.get("train_code")
@@ -137,7 +188,8 @@ def train_no():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Nearest Station (e.g. /api/trains/nearest-stations?city=Beijing)
+
+# Nearest Station
 @app.route("/api/trains/nearest-stations", methods=["GET"])
 def nearest_stations():
     city = request.args.get("city")
@@ -148,7 +200,8 @@ def nearest_stations():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Train Route (e.g.)
+
+# Train Route
 @app.route("/api/trains/route", methods=["GET"])
 def route():
     from_station = request.args.get("from_station")
@@ -160,6 +213,52 @@ def route():
         return jsonify(asyncio.run(get_route(from_station, to_station, train_date)))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/budget")
+def budget():
+    return {
+        "trip_cost": 120,
+        "currency": "USD",
+        "breakdown": {
+            "train": 80,
+            "food": 20,
+            "hotel": 20
+        }
+    }
+
+
+@app.route("/api/trip-options", methods=["POST"])
+def trip_options():
+    data = request.json
+
+    route = data.get("route")
+    budget = data.get("budget")
+
+    result = calculate_trip_options(route, budget)
+
+    return jsonify(result)
+
+
+# Train ticket budget
+@app.route("/api/budget", methods=["POST"])
+def get_budget():
+    data = request.json
+
+    origin = data.get("origin")
+    destination = data.get("destination")
+    seat_class = data.get("seat_class", "second_class")
+    currency = data.get("currency", "USD")
+
+    result = calculate_trip_budget(
+        origin=origin,
+        destination=destination,
+        seat_class=seat_class,
+        currency=currency
+    )
+
+    return jsonify(result)
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=True)
