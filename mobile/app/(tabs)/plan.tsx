@@ -29,7 +29,7 @@ export default function PlanScreen() {
   const [includeCulturalLandmarks, setIncludeCulturalLandmarks] = useState(false);
 
   const handleGenerateItinerary = () => {
-    router.push('/iternaries' as any);
+    router.push('/itineraries' as any);
   };
 
   return (

@@ -52,7 +52,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="iternaries"
+        name="itineraries"
         options={{
           href: null,
         }}
