@@ -58,7 +58,7 @@ def search_route():
     from_station = data.get("from")
     to_station = data.get("to")
     date = data.get("date")
-    user_budget = float(data.get("budget", 0))
+    user_budget = float(data.get("budget") or 0)
 
     if not from_station or not to_station or not date:
         return jsonify({"error": "Missing required parameters"}), 400

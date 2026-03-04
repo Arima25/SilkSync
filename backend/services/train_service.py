@@ -53,7 +53,7 @@ async def call_mcp_tool(tool_name: str, arguments: dict):
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json, text/event-stream",
-                "mcp-session-id": session_id
+                "mcp-session-id": session_id or ""
             }
         )
         #print("STATUS:", res.status_code)
