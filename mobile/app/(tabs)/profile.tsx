@@ -302,7 +302,8 @@ export default function Profile() {
               <Ionicons name="chevron-forward" size={20} color="#999" />
             </TouchableOpacity>
 
-            {/* <TouchableOpacity style={styles.settingsItem}>
+            {/* Currently not to be added in MVP, but placeholders for future features 
+            <TouchableOpacity style={styles.settingsItem}>
               <Ionicons name="notifications-outline" size={22} color="#333" />
               <Text style={styles.settingsItemText}>Notifications</Text>
               <Ionicons name="chevron-forward" size={20} color="#999" />

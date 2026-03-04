@@ -9,10 +9,10 @@ load_dotenv()
 API_HOST = "api.fxratesapi.com"
 API_KEY = os.getenv("FXR_API_KEY")
 
-if not API_KEY:
-    raise RuntimeError("FXR_API_KEY not set")
-
 def convert_currency(from_currency: str, to_currency: str, amount: float):
+    if not API_KEY:
+        raise RuntimeError("FXR_API_KEY not set. Please set it in your .env file to use currency conversion.")
+    
     conn = http.client.HTTPSConnection(API_HOST)
 
     endpoint = (

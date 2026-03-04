@@ -1,9 +1,16 @@
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 from services.currency import convert_currency
 from services.train_service import search_stations, query_tickets, query_ticket_price, query_transfer, get_train_stops, get_current_time
 import asyncio
+from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)
+
+# In-memory storage for check-ins (in production, use a real database)
+check_ins = {}
+train_travelers = {}
 
 @app.route('/')
 def index():
@@ -118,6 +125,83 @@ def ticket_price():
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# Check-In Endpoint
+@app.route("/api/check-in", methods=["POST"])
+def check_in():
+    data = request.get_json()
+    
+    user_id = data.get("userId")
+    train_number = data.get("trainNumber")
+    departure_date = data.get("departureDate")
+    departure_station = data.get("departureStation")
+    arrival_station = data.get("arrivalStation")
+    user_name = data.get("userName", "Anonymous")
+    user_photo = data.get("userPhoto")
+    social_intent = data.get("socialIntent", "open_to_connect")
+    
+    if not user_id or not train_number or not departure_date:
+        return jsonify({"error": "Missing required fields: userId, trainNumber, departureDate"}), 400
+    
+    # Create journey ID from train number and date
+    journey_id = f"{train_number}_{departure_date}"
+    
+    # Store check-in
+    check_in_data = {
+        "userId": user_id,
+        "userName": user_name,
+        "userPhoto": user_photo,
+        "trainNumber": train_number,
+        "departureDate": departure_date,
+        "departureStation": departure_station,
+        "arrivalStation": arrival_station,
+        "socialIntent": social_intent,
+        "journeyId": journey_id,
+        "checkedInAt": datetime.now().isoformat()
+    }
+    
+    # Add to check-ins
+    check_ins[f"{user_id}_{journey_id}"] = check_in_data
+    
+    # Add to train travelers list
+    if journey_id not in train_travelers:
+        train_travelers[journey_id] = []
+    
+    # Remove existing entry if user is already in list
+    train_travelers[journey_id] = [t for t in train_travelers[journey_id] if t["userId"] != user_id]
+    
+    # Add new entry
+    train_travelers[journey_id].append({
+        "userId": user_id,
+        "userName": user_name,
+        "userPhoto": user_photo,
+        "socialIntent": social_intent,
+        "checkedInAt": check_in_data["checkedInAt"]
+    })
+    
+    return jsonify({
+        "success": True,
+        "journeyId": journey_id,
+        "message": "Successfully checked in to journey"
+    })
+
+# Get Travelers List for a Train
+@app.route("/api/train-travelers/<journey_id>", methods=["GET"])
+def get_train_travelers(journey_id):
+    travelers = train_travelers.get(journey_id, [])
+    return jsonify({
+        "journeyId": journey_id,
+        "travelers": travelers,
+        "count": len(travelers)
+    })
+
+# Get User's Current Check-In
+@app.route("/api/check-in/<user_id>", methods=["GET"])
+def get_user_check_in(user_id):
+    user_check_ins = [v for k, v in check_ins.items() if k.startswith(user_id)]
+    if user_check_ins:
+        return jsonify(user_check_ins[0])
+    return jsonify({"error": "No active check-in found"}), 404
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=True)
