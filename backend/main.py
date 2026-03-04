@@ -1,7 +1,12 @@
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 from services.currency import convert_currency
-from services.train_service import search_stations, query_tickets, query_ticket_price, query_transfer, get_train_stops, get_current_time
+from services.train_service import (
+    search_stations, query_tickets, query_ticket_price,
+    query_transfer, get_train_stops, get_train_no,
+    get_current_time, get_nearest_stations, get_route
+)
+from services.budget_service import calculate_trip_options
 import asyncio
 from datetime import datetime
 
@@ -47,7 +52,51 @@ def convert_currency_api():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Station Search (e.g. GET /api/trains/stations/search?q=beijing)
+
+# ===============================
+# NEW ROUTE SEARCH + BUDGET ENGINE
+# ===============================
+
+@app.route("/search_route", methods=["POST"])
+def search_route():
+
+    data = request.json
+
+    from_station = data.get("from")
+    to_station = data.get("to")
+    date = data.get("date")
+    user_budget = float(data.get("budget") or 0)
+
+    if not from_station or not to_station or not date:
+        return jsonify({"error": "Missing required parameters"}), 400
+
+    try:
+        # get train route data
+        route_data = asyncio.run(get_route(from_station, to_station, date))
+
+        budget_analysis = None
+
+        # normalize train list (direct vs transfer)
+        train_list = route_data.get("trains") or route_data.get("options")
+
+        if train_list:
+            first_train = train_list[0]
+
+            budget_analysis = calculate_trip_options(
+                first_train.get("prices", {}),
+                user_budget
+            )
+
+        return jsonify({
+            "route": route_data,
+            "budget_analysis": budget_analysis
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Station Search
 @app.route("/api/trains/stations/search", methods=["GET"])
 def stations_search():
     q = request.args.get("q")
@@ -59,50 +108,59 @@ def stations_search():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Ticket Query (e.g. GET /api/trains/tickets?from_station=北京&to_station=上海&date=2025-06-01)
+
+# Ticket Query
 @app.route("/api/trains/tickets", methods=["GET"])
 def tickets():
     from_station = request.args.get("from_station")
     to_station = request.args.get("to_station")
     date = request.args.get("train_date")
+
     if not from_station or not to_station or not date:
         return jsonify({"error": "Missing required parameters"}), 400
+
     try:
         result = asyncio.run(query_tickets(from_station, to_station, date))
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
-# Transfer query (e.g. GET /api/trains/transfer?from_station=成都&to_station=拉萨&date=2025-06-01)
+
+
+# Transfer query
 @app.route("/api/trains/transfer", methods=["GET"])
 def transfer():
     from_station = request.args.get("from_station")
     to_station = request.args.get("to_station")
-    date = request.args.get("train_date")
-    if not from_station or not to_station or not date:
+    train_date = request.args.get("train_date")
+
+    if not from_station or not to_station or not train_date:
         return jsonify({"error": "Missing required parameters"}), 400
+
     try:
-        result = asyncio.run(query_transfer(from_station, to_station, date))
+        result = asyncio.run(query_transfer(from_station, to_station, train_date))
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# Train stops (e.g. GET /api/trains/stops/G1)
+# Train stops
 @app.route("/api/trains/stops/<train_code>", methods=["GET"])
 def train_stops(train_code):
     from_station = request.args.get("from_station")
     to_station = request.args.get("to_station")
     train_date = request.args.get("train_date")
+
     if not from_station or not to_station or not train_date:
         return jsonify({"error": "Missing required parameters: from_station, to_station, train_date"}), 400
+
     try:
         result = asyncio.run(get_train_stops(train_code, from_station, to_station, train_date))
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# China time (e.g. GET /api/trains/current-time)
+
+# China time
 @app.route("/api/trains/current-time", methods=["GET"])
 def current_time():
     try:
@@ -111,21 +169,25 @@ def current_time():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 # Ticket Pricing
 @app.route("/api/trains/price", methods=["GET"])
 def ticket_price():
     from_station = request.args.get("from_station")
     to_station = request.args.get("to_station")
     train_date = request.args.get("train_date")
-    train_code = request.args.get("train_code")  # optional
+    train_code = request.args.get("train_code")
+
     if not from_station or not to_station or not train_date:
         return jsonify({"error": "Missing required parameters"}), 400
+
     try:
         result = asyncio.run(query_ticket_price(from_station, to_station, train_date, train_code))
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+<<<<<<< HEAD
 # Check-In Endpoint
 @app.route("/api/check-in", methods=["POST"])
 def check_in():
@@ -202,6 +264,55 @@ def get_user_check_in(user_id):
     if user_check_ins:
         return jsonify(user_check_ins[0])
     return jsonify({"error": "No active check-in found"}), 404
+=======
+
+@app.route("/api/trains/train-no", methods=["GET"])
+def train_no():
+    train_code = request.args.get("train_code")
+    from_station = request.args.get("from_station")
+    to_station = request.args.get("to_station")
+    train_date = request.args.get("train_date")
+
+    if not train_code or not from_station or not to_station or not train_date:
+        return jsonify({"error": "Missing required parameters"}), 400
+
+    try:
+        result = asyncio.run(get_train_no(train_code, from_station, to_station, train_date))
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Nearest Station
+@app.route("/api/trains/nearest-stations", methods=["GET"])
+def nearest_stations():
+    city = request.args.get("city")
+
+    if not city:
+        return jsonify({"error": "Missing city parameter"}), 400
+
+    try:
+        return jsonify(asyncio.run(get_nearest_stations(city)))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Train Route
+@app.route("/api/trains/route", methods=["GET"])
+def route():
+    from_station = request.args.get("from_station")
+    to_station = request.args.get("to_station")
+    train_date = request.args.get("train_date")
+
+    if not from_station or not to_station or not train_date:
+        return jsonify({"error": "Missing required parameters"}), 400
+
+    try:
+        return jsonify(asyncio.run(get_route(from_station, to_station, train_date)))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+>>>>>>> 3ae80b45b2742a6bac71217222a7c7e0e0fdef48
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=True)
