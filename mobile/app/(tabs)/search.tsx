@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Modal,
   Linking,
   Platform,
   Alert,
@@ -15,65 +14,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useUser } from '../../src/context/UserContext';
 import { checkInToJourney } from '../../src/services/trainChatService';
 
-// Mock train data - will be replaced with backend API
-const MOCK_TRAINS = [
-  {
-    id: 'G102',
-    type: 'HSR',
-    departureStation: 'Shanghai',
-    arrivalStation: 'Beijing South',
-    departureTime: '08:00',
-    arrivalTime: '12:15',
-    duration: '4h 15m',
-    price: 86.00,
-    class: 'Second Class',
-    stops: [
-      { station: 'Shanghai Hongqiao', platform: 'Platform 7', time: '08:00', type: 'departure' },
-      { station: 'Nanjing South', platform: 'Stop 4 mins', time: '09:24', type: 'stop' },
-      { station: 'Beijing South', platform: 'Platform 12', time: '12:15', type: 'arrival' },
-    ],
-    coach: 'Coach 9',
-  },
-  {
-    id: 'G108',
-    type: 'HSR',
-    departureStation: 'Shanghai',
-    arrivalStation: 'Beijing South',
-    departureTime: '09:30',
-    arrivalTime: '13:50',
-    duration: '4h 20m',
-    price: 92.00,
-    class: 'Second Class',
-    stops: [
-      { station: 'Shanghai Hongqiao', platform: 'Platform 3', time: '09:30', type: 'departure' },
-      { station: 'Suzhou North', platform: 'Stop 3 mins', time: '10:00', type: 'stop' },
-      { station: 'Nanjing South', platform: 'Stop 5 mins', time: '10:45', type: 'stop' },
-      { station: 'Beijing South', platform: 'Platform 8', time: '13:50', type: 'arrival' },
-    ],
-    coach: 'Coach 5',
-  },
-  {
-    id: 'G112',
-    type: 'HSR',
-    departureStation: 'Shanghai',
-    arrivalStation: 'Beijing South',
-    departureTime: '11:00',
-    arrivalTime: '15:30',
-    duration: '4h 30m',
-    price: 86.00,
-    class: 'Second Class',
-    stops: [
-      { station: 'Shanghai Hongqiao', platform: 'Platform 5', time: '11:00', type: 'departure' },
-      { station: 'Jinan West', platform: 'Stop 4 mins', time: '13:20', type: 'stop' },
-      { station: 'Beijing South', platform: 'Platform 10', time: '15:30', type: 'arrival' },
-    ],
-    coach: 'Coach 7',
-  },
-];
+const BACKEND_BASE_URL =
+  process.env.EXPO_PUBLIC_BACKEND_URL ||
+  (Platform.OS === 'android' ? 'http://10.0.2.2:5001' : 'http://127.0.0.1:5001');
+  // Android emulator cannot call localhost directly.
 
 type SearchState = 'initial' | 'results' | 'no-results' | 'detail';
 
@@ -81,18 +29,20 @@ interface TrainData {
   id: string;
   type: string;
   departureStation: string;
+  departureStationZh?: string;
   arrivalStation: string;
+  arrivalStationZh?: string;
   departureTime: string;
   arrivalTime: string;
   duration: string;
-  price: number;
+  price: number | null;
   class: string;
-  stops: Array<{
+  stops: {
     station: string;
     platform: string;
     time: string;
     type: string;
-  }>;
+  }[];
   coach: string;
 }
 
@@ -102,8 +52,98 @@ interface ValidationErrors {
   date?: string;
 }
 
+interface StationLabel {
+  en?: string;
+  zh?: string;
+}
+
+interface RouteTrainApi {
+  train_code?: string;
+  departure?: string;
+  arrival?: string;
+  duration?: string;
+  from_station?: StationLabel;
+  to_station?: StationLabel;
+  seats?: {
+    class_en?: string;
+    availability?: string;
+  }[];
+}
+
+interface RouteResponseApi {
+  trains?: RouteTrainApi[];
+}
+
+interface StopsResponseApi {
+  stations?: {
+    station_name?: string;
+    start_time?: string;
+    arrive_time?: string;
+    stopover_time?: string;
+  }[];
+}
+
+interface PriceRowApi {
+  train_code?: string;
+  start_time?: string;
+  prices?: Record<string, string>;
+}
+
+interface PriceResponseApi {
+  data?: PriceRowApi[];
+}
+// The backend response shape is not identical to our UI card shape.
+// These types document backend payloads so we can map them safely into TrainData.
+
+const STATION_ALIASES: Record<string, string> = {
+  beijing: '北京',
+  shanghai: '上海',
+  guangzhou: '广州',
+  shenzhen: '深圳',
+  hangzhou: '杭州',
+  nanjing: '南京',
+  chengdu: '成都',
+  wuhan: '武汉',
+  xian: '西安',
+  "xi'an": '西安',
+};
+
+const formatDateForApi = (date: Date): string => {
+  // Use local date to avoid UTC day-shift from toISOString().
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const buildStationCandidates = (raw: string): string[] => {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+
+  const noCountry = trimmed
+    .replace(/,\s*china$/i, '')
+    .replace(/\s+china$/i, '')
+    .trim();
+
+  const key = noCountry.toLowerCase();
+  const alias = STATION_ALIASES[key];
+
+  return Array.from(new Set([trimmed, noCountry, alias].filter(Boolean) as string[]));
+};
+
+const pickLowestPrice = (prices?: Record<string, string>): number | null => {
+  if (!prices) return null;
+  const values = Object.values(prices)
+    .map((v) => Number(v))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  if (values.length === 0) return null;
+  return Math.min(...values);
+};
+
 export default function SearchScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ from?: string; to?: string }>();
   const { user, profile } = useUser();
   
   const [searchState, setSearchState] = useState<SearchState>('initial');
@@ -116,6 +156,58 @@ export default function SearchScreen() {
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [apiError, setApiError] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [usdToCnyRate, setUsdToCnyRate] = useState(7.2); // Fallback exchange rate of 7.2 in case API call fails.
+
+  useEffect(() => {
+    const fromParam = typeof params.from === 'string' ? params.from.trim() : '';
+    const toParam = typeof params.to === 'string' ? params.to.trim() : '';
+
+    if (fromParam) {
+      setFromStation(fromParam);
+    }
+    if (toParam) {
+      setToStation(toParam);
+    }
+  }, [params.from, params.to]);
+
+  useEffect(() => {
+    const fetchUsdToCnyRate = async () => {
+      try {
+        const response = await fetch(`${BACKEND_BASE_URL}/api/convert-currency`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: 'USD', to: 'CNY', amount: 1 }),
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+        const rate = Number(data?.converted_amount);
+        if (Number.isFinite(rate) && rate > 0) {
+          setUsdToCnyRate(rate);
+        }
+      } catch {
+        // Keep default fallback rate if API is unavailable.
+      }
+    };
+
+    fetchUsdToCnyRate();
+  }, []);
+
+  const formatPriceDisplay = (priceCny: number | null) => {
+    if (priceCny === null) {
+      return { cny: 'N/A', usd: '' };
+    }
+
+    const usd = priceCny / usdToCnyRate;
+    return {
+      cny: `¥${priceCny.toFixed(2)}`,
+      usd: `$${usd.toFixed(2)}`,
+    };
+  };
 
   const validateForm = (): boolean => {
     const newErrors: ValidationErrors = {};
@@ -134,30 +226,182 @@ export default function SearchScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     setApiError(false);
     
     if (!validateForm()) {
       return;
     }
 
-    // Simulate API call - will be replaced with actual backend
-    // For demo, show results if searching from Shanghai
-    const searchFrom = fromStation.trim().toLowerCase();
-    const searchTo = toStation.trim().toLowerCase();
-    
-    if (searchFrom.includes('shanghai') && searchTo.includes('beijing')) {
-      setSearchResults(MOCK_TRAINS);
-      setSearchState('results');
-    } else if (searchFrom && searchTo) {
-      // Simulate no results for other routes
+    setIsSearching(true);
+
+    try {
+      const formattedDate = formatDateForApi(departureDate);
+      // Backend expects YYYY-MM-DD, matching Python API format.
+      const fromCandidates = buildStationCandidates(fromStation);
+      const toCandidates = buildStationCandidates(toStation);
+
+      let trains: RouteTrainApi[] = [];
+
+      // Try raw input first, then normalized / Chinese aliases.
+      // This handles inputs like "Beijing, China" with a backend expecting "北京".
+      for (const fromCandidate of fromCandidates) {
+        for (const toCandidate of toCandidates) {
+          const url = `${BACKEND_BASE_URL}/api/trains/route?from_station=${encodeURIComponent(
+            fromCandidate
+          )}&to_station=${encodeURIComponent(toCandidate)}&train_date=${formattedDate}`;
+
+          const response = await fetch(url);
+          if (!response.ok) {
+            continue;
+          }
+
+          const data = (await response.json()) as RouteResponseApi;
+          const current = Array.isArray(data.trains) ? data.trains : [];
+
+          if (current.length > 0) {
+            trains = current;
+            break;
+          }
+        }
+
+        if (trains.length > 0) {
+          break;
+        }
+      }
+
+      // Try to get full price table in one call (faster than per-train calls).
+      const priceUrl = `${BACKEND_BASE_URL}/api/trains/price?from_station=${encodeURIComponent(
+        fromStation.trim()
+      )}&to_station=${encodeURIComponent(toStation.trim())}&train_date=${formattedDate}`;
+
+      const priceMapByCodeAndTime = new Map<string, number>();
+      const priceMapByCode = new Map<string, number>();
+
+      try {
+        const priceRes = await fetch(priceUrl);
+        if (priceRes.ok) {
+          const priceData = (await priceRes.json()) as PriceResponseApi;
+          const priceRows = Array.isArray(priceData.data) ? priceData.data : [];
+
+          for (const row of priceRows) {
+            const code = row.train_code || '';
+            const startTime = row.start_time || '';
+            const price = pickLowestPrice(row.prices);
+            if (!code || price === null) continue;
+
+            priceMapByCode.set(code, price);
+            priceMapByCodeAndTime.set(`${code}__${startTime}`, price);
+          }
+        }
+      } catch {
+        // Keep search usable even if price lookup fails.
+      }
+
+      // Map backend train objects -> UI cards.
+      // We keep display robust by providing fallbacks for missing fields.
+
+      const mappedResults: TrainData[] = trains.map((train, index) => {
+        const preferredSeat =
+          train.seats?.find((s) => s.availability && s.availability !== 'Not Available') ||
+          train.seats?.[0];
+
+        const departureEn = train.from_station?.en || train.from_station?.zh || fromStation.trim();
+        const arrivalEn = train.to_station?.en || train.to_station?.zh || toStation.trim();
+
+        const priceKey = `${train.train_code || ''}__${train.departure || ''}`;
+        const matchedPrice =
+          priceMapByCodeAndTime.get(priceKey) ||
+          priceMapByCode.get(train.train_code || '') ||
+          null;
+
+        return {
+          id: train.train_code || `TRAIN-${index + 1}`,
+          type: (train.train_code || '').startsWith('G') ? 'HSR' : 'Rail',
+          departureStation: departureEn,
+          departureStationZh: train.from_station?.zh,
+          arrivalStation: arrivalEn,
+          arrivalStationZh: train.to_station?.zh,
+          departureTime: train.departure || '--:--',
+          arrivalTime: train.arrival || '--:--',
+          duration: train.duration || '--',
+          price: matchedPrice,
+          class: preferredSeat?.class_en || 'Standard',
+          coach: 'TBD',
+          stops: [
+            // Placeholder stops for list view.
+            // Full stop sequence is fetched in handleViewDetails().
+            {
+              station: departureEn,
+              platform: 'Departure',
+              time: train.departure || '--:--',
+              type: 'departure',
+            },
+            {
+              station: arrivalEn,
+              platform: 'Arrival',
+              time: train.arrival || '--:--',
+              type: 'arrival',
+            },
+          ],
+        };
+      });
+
+      if (mappedResults.length > 0) {
+        setSearchResults(mappedResults);
+        setSearchState('results');
+      } else {
+        // Empty success response => no trains for this route/date.
+        setSearchResults([]);
+        setSearchState('no-results');
+      }
+    } catch (error) {
+      console.error('Train search error:', error);
+      setApiError(true);
       setSearchResults([]);
-      setSearchState('no-results');
+      setSearchState('initial');
+      // Keep user on form and show recoverable error UX.
+      Alert.alert('Search Failed', 'Could not fetch train data. Please try again.');
+    } finally {
+      setIsSearching(false);
     }
   };
 
-  const handleViewDetails = (train: TrainData) => {
-    setSelectedTrain(train);
+  const handleViewDetails = async (train: TrainData) => {
+    try {
+      const formattedDate = formatDateForApi(departureDate);
+      const fromForApi = train.departureStationZh || train.departureStation;
+      const toForApi = train.arrivalStationZh || train.arrivalStation;
+
+      const url = `${BACKEND_BASE_URL}/api/trains/stops/${encodeURIComponent(
+        train.id
+      )}?from_station=${encodeURIComponent(fromForApi)}&to_station=${encodeURIComponent(
+        toForApi
+      )}&train_date=${formattedDate}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Stops failed (${response.status})`);
+      }
+
+      const data = (await response.json()) as StopsResponseApi;
+      const stopRows = (data.stations || []).map((stop, index, arr) => ({
+        station: stop.station_name || `Stop ${index + 1}`,
+        platform: stop.stopover_time || 'Stop',
+        time: stop.start_time || stop.arrive_time || '--:--',
+        type: index === 0 ? 'departure' : index === arr.length - 1 ? 'arrival' : 'stop',
+      }));
+      // Convert stop list to timeline format used by detail UI.
+
+      setSelectedTrain({
+        ...train,
+        stops: stopRows.length > 0 ? stopRows : train.stops,
+      });
+    } catch {
+      // If stops request fails, still open detail page with base train data.
+      setSelectedTrain(train);
+    }
+
     setSearchState('detail');
   };
 
@@ -361,9 +605,13 @@ export default function SearchScreen() {
         )}
 
         {/* Search Button */}
-        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-          <Ionicons name="search" size={20} color="#fff" />
-          <Text style={styles.searchButtonText}>Search Trains</Text>
+        <TouchableOpacity style={styles.searchButton} onPress={handleSearch} disabled={isSearching}>
+          {isSearching ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="search" size={20} color="#fff" />
+          )}
+          <Text style={styles.searchButtonText}>{isSearching ? 'Searching...' : 'Search Trains'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -395,18 +643,24 @@ export default function SearchScreen() {
         </View>
       </View>
 
-      {searchResults.map((train) => (
-        <View key={train.id} style={styles.trainCard}>
+      {searchResults.map((train, index) => (
+        <View key={`${train.id}-${train.departureTime}-${index}`} style={styles.trainCard}>
+          {(() => {
+            const displayPrice = formatPriceDisplay(train.price);
+            return (
           <View style={styles.trainHeader}>
             <View style={styles.trainTypeBadge}>
               <Text style={styles.trainTypeText}>{train.type}</Text>
             </View>
             <Text style={styles.trainId}>{train.id}</Text>
             <View style={styles.trainPriceContainer}>
-              <Text style={styles.trainPrice}>${train.price.toFixed(2)}</Text>
+              <Text style={styles.trainPrice}>{displayPrice.cny}</Text>
+              {displayPrice.usd ? <Text style={styles.trainPriceUsd}>{displayPrice.usd}</Text> : null}
               <Text style={styles.trainClass}>{train.class}</Text>
             </View>
           </View>
+            );
+          })()}
 
           <View style={styles.trainRoute}>
             <View style={styles.trainTimeSection}>
@@ -473,7 +727,7 @@ export default function SearchScreen() {
           </View>
           <Text style={styles.noResultsTitle}>No trains found for this date</Text>
           <Text style={styles.noResultsSubtitle}>
-            We couldn't find any scheduled services for {formatDate(departureDate)}. 
+            We could not find any scheduled services for {formatDate(departureDate)}. 
             Try searching for a different day or checking nearby stations.
           </Text>
 
@@ -503,6 +757,7 @@ export default function SearchScreen() {
   // Train Detail View
   const renderTrainDetail = () => {
     if (!selectedTrain) return null;
+    const detailPrice = formatPriceDisplay(selectedTrain.price);
 
     return (
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -585,7 +840,8 @@ export default function SearchScreen() {
             <View style={styles.trainInfoItem}>
               <Ionicons name="pricetag-outline" size={24} color="#64748B" />
               <Text style={styles.trainInfoLabel}>Price</Text>
-              <Text style={styles.trainInfoValue}>${selectedTrain.price.toFixed(2)}</Text>
+              <Text style={styles.trainInfoValue}>{detailPrice.cny}</Text>
+              {detailPrice.usd ? <Text style={styles.trainInfoSubValue}>{detailPrice.usd}</Text> : null}
             </View>
             <View style={styles.trainInfoItem}>
               <Ionicons name="grid-outline" size={24} color="#64748B" />
@@ -808,6 +1064,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#2DD4BF',
+  },
+  trainPriceUsd: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
   },
   trainClass: {
     fontSize: 12,
@@ -1141,5 +1402,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#0F172A',
+  },
+  trainInfoSubValue: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
   },
 });
