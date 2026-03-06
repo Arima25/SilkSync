@@ -1,3 +1,5 @@
+import re
+
 STATION_NAMES = {
     "北京": "Beijing",
     "北京南": "Beijing South",
@@ -126,3 +128,31 @@ def bilingual_seats(seats: dict) -> list:
             "availability": translate_availability(value)
         })
     return result
+
+
+_EN_TO_ZH_STATIONS = {en.lower(): zh for zh, en in STATION_NAMES.items()}
+
+
+def normalize_station_input(name: str) -> str:
+    if not name:
+        return name
+
+    station = name.strip()
+    station = re.sub(r",\s*china$", "", station, flags=re.IGNORECASE)
+    station = re.sub(r"\s+china$", "", station, flags=re.IGNORECASE)
+    station = re.sub(r"\s+city$", "", station, flags=re.IGNORECASE)
+
+    # Normalize common Chinese administrative suffixes (e.g. 北京市 -> 北京).
+    station = re.sub(r"(特别行政区|自治区|自治州|地区|盟|省|市|县|区)$", "", station)
+
+    # If trimming removed too much, fall back to original cleaned token.
+    if not station:
+        station = name.strip()
+        station = re.sub(r",\s*china$", "", station, flags=re.IGNORECASE)
+        station = re.sub(r"\s+china$", "", station, flags=re.IGNORECASE)
+        station = re.sub(r"\s+city$", "", station, flags=re.IGNORECASE)
+
+    if station in STATION_NAMES:
+        return station
+
+    return _EN_TO_ZH_STATIONS.get(station.lower(), station)
