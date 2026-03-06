@@ -1,10 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useWallet } from '@/src/context/WalletContext';
 import * as Location from 'expo-location';
+
+const CITY_EN_ALIAS: Record<string, string> = {
+  '北京': 'Beijing',
+  '北京市': 'Beijing',
+  beijing: 'Beijing',
+  '上海': 'Shanghai',
+  '上海市': 'Shanghai',
+  shanghai: 'Shanghai',
+  '天津': 'Tianjin',
+  '天津市': 'Tianjin',
+  tianjin: 'Tianjin',
+  '重庆': 'Chongqing',
+  '重庆市': 'Chongqing',
+  chongqing: 'Chongqing',
+  '哈尔滨': 'Harbin',
+  harbin: 'Harbin',
+  '广州': 'Guangzhou',
+  guangzhou: 'Guangzhou',
+  '深圳': 'Shenzhen',
+  shenzhen: 'Shenzhen',
+  '杭州': 'Hangzhou',
+  hangzhou: 'Hangzhou',
+  '南京': 'Nanjing',
+  nanjing: 'Nanjing',
+  '武汉': 'Wuhan',
+  wuhan: 'Wuhan',
+  '成都': 'Chengdu',
+  chengdu: 'Chengdu',
+  '西安': "Xi'an",
+  xian: "Xi'an",
+  "xi'an": "Xi'an",
+};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -47,34 +79,78 @@ export default function HomeScreen() {
 
   const fetchUserLocation = async () => {
     try {
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        setCurrentCity('Location Off');
+        setCurrentDistrict('Turn on location services');
+        return;
+      }
+
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setCurrentCity('Location Denied');
         setCurrentDistrict('Enable location access');
         return;
       }
-      const location = await Location.getCurrentPositionAsync({});
+
+      // Try last known location first.
+      let location = await Location.getLastKnownPositionAsync();
+
+      // If no cached location exists, try current fix with fallback accuracy.
+      if (!location) {
+        try {
+          location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+            mayShowUserSettingsDialog: true,
+          });
+        } catch {
+          location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Low,
+            mayShowUserSettingsDialog: true,
+          });
+        }
+      }
+
+      if (!location) {
+        setCurrentCity('Location');
+        setCurrentDistrict('Set emulator/device location');
+        return;
+      }
+
       const { latitude, longitude } = location.coords;
       
-      // Use Amap reverse geocoding API
-      const amapiKey = process.env.EXPO_PUBLIC_AMAP_ANDROID_API_KEY;
+      // Use Amap Web API key for REST reverse geocoding
+      const amapiKey = process.env.EXPO_PUBLIC_AMAP_WEB_API_KEY;
       const response = await fetch(
-        `https://restapi.amap.com/v3/geocode/regeo?location=${longitude},${latitude}&key=${amapiKey}`
+        `https://restapi.amap.com/v3/geocode/regeo?location=${longitude},${latitude}&extensions=base&key=${amapiKey}`
       );
       const data = await response.json();
       
       if (data.status === '1' && data.regeocode) {
-        const { city, district } = data.regeocode.addressComponent;
-        setCurrentCity(city || 'Unknown');
+        const { city, district, province } = data.regeocode.addressComponent;
+
+        // Municipality edge case: some responses may not provide `city` directly,
+        // so we fallback to `province` and normalize city display to English.
+        const rawCity = Array.isArray(city) ? (city[0] || '') : (city || '');
+        const fallbackCity = rawCity || province || '';
+        const cityKey = String(fallbackCity).trim();
+        const cityKeyNoSuffix = cityKey.replace(/市$/, '').replace(/\s+City$/i, '').trim();
+        const normalizedCity =
+          CITY_EN_ALIAS[cityKey] ||
+          CITY_EN_ALIAS[cityKey.toLowerCase()] ||
+          CITY_EN_ALIAS[cityKeyNoSuffix] ||
+          CITY_EN_ALIAS[cityKeyNoSuffix.toLowerCase()] ||
+          cityKeyNoSuffix;
+
+        setCurrentCity(normalizedCity || 'Unknown');
         setCurrentDistrict(district || 'Unknown');
       } else {
         setCurrentCity('Location');
         setCurrentDistrict('Not found');
       }
-    } catch (err) {
-      console.error('Location error:', err);
+    } catch {
       setCurrentCity('Location');
-      setCurrentDistrict('Error getting location');
+      setCurrentDistrict('Location unavailable');
     }
   };
 
@@ -180,7 +256,17 @@ export default function HomeScreen() {
 
         {/* Second Row of Core Functions */}
         <View style={styles.functionsGrid}>
-            <TouchableOpacity style={styles.functionCard} onPress={() => router.push('/search' as any)}>
+            <TouchableOpacity
+              style={styles.functionCard}
+              onPress={() =>
+                router.push({
+                  pathname: '/(tabs)/search' as any,
+                  params: {
+                    from: currentCity,
+                  },
+                })
+              }
+            >
                 <View style={[styles.iconBox, { backgroundColor: '#FEF3C7' }]}>
                     <Ionicons name="search-outline" size={28} color="#F59E0B" />
                 </View>
@@ -658,5 +744,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  locationActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
 });

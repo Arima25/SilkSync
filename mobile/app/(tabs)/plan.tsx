@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import { useItinerary } from '@/src/context/ItineraryContext';
 
 const DURATION_OPTIONS = ['3 Days', '5 Days', '7 Days'];
 const TRAVEL_STYLES = [
@@ -21,14 +23,78 @@ const TRAVEL_STYLES = [
 ];
 
 export default function PlanScreen() {
-  const [currentLocation, setCurrentLocation] = useState('Shanghai, China');
+  const { itinerary, setItinerary } = useItinerary();
+  const [currentLocation, setCurrentLocation] = useState('Locating...');
   const [destination, setDestination] = useState('');
   const [selectedDuration, setSelectedDuration] = useState('3 Days');
   const [selectedTravelStyle, setSelectedTravelStyle] = useState('shared');
   const [includeFoodTours, setIncludeFoodTours] = useState(true);
   const [includeCulturalLandmarks, setIncludeCulturalLandmarks] = useState(false);
 
+  useEffect(() => {
+    const loadCurrentLocation = async () => {
+      try {
+        const hasServices = await Location.hasServicesEnabledAsync();
+        if (!hasServices) {
+          setCurrentLocation('Location Off');
+          return;
+        }
+
+        const position =
+          (await Location.getLastKnownPositionAsync()) ||
+          (await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          }));
+
+        if (!position) {
+          setCurrentLocation('Unknown Location');
+          return;
+        }
+
+        const [place] = await Location.reverseGeocodeAsync({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+
+        // Prefer AMap reverse-geocode city/province in Chinese for routing stability.
+        const amapWebKey = process.env.EXPO_PUBLIC_AMAP_WEB_API_KEY;
+        if (amapWebKey) {
+          const regeoRes = await fetch(
+            `https://restapi.amap.com/v3/geocode/regeo?location=${position.coords.longitude},${position.coords.latitude}&extensions=base&key=${amapWebKey}`
+          );
+          const regeoData = await regeoRes.json();
+          if (regeoData?.status === '1' && regeoData?.regeocode?.addressComponent) {
+            const comp = regeoData.regeocode.addressComponent;
+            const cityRaw = Array.isArray(comp.city) ? (comp.city[0] || '') : (comp.city || '');
+            const city = (cityRaw || comp.province || '').replace(/市$/, '').trim();
+            if (city) {
+              setCurrentLocation(city);
+              return;
+            }
+          }
+        }
+
+        // Fallback to Expo reverse-geocode if AMap response is unavailable.
+        const city = (place?.city || place?.subregion || place?.region || '').replace(/市$/, '').trim();
+        setCurrentLocation(city || 'Unknown Location');
+      } catch {
+        setCurrentLocation('Unknown Location');
+      }
+    };
+
+    loadCurrentLocation();
+  }, []);
+
   const handleGenerateItinerary = () => {
+    const from = currentLocation.trim() || itinerary.origin;
+    const to = destination.trim() || itinerary.destination;
+
+    setItinerary({
+      ...itinerary,
+      origin: from,
+      destination: to,
+    });
+
     router.push('/iternaries' as any);
   };
 

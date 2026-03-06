@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   SafeAreaView,
-  Image,
   Share,
   Alert,
 } from 'react-native';
@@ -54,13 +53,24 @@ Book your trip with SilkSync ✨`;
         message: shareMessage,
         title: 'SilkSync Route Recommendation',
       });
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to share itinerary');
     }
   };
 
   const handleRoutePress = () => {
     router.push('/cost' as any);
+  };
+
+  const handleMapOverviewPress = (overview = false) => {
+    router.push({
+      pathname: '/(tabs)/map' as any,
+      params: {
+        from: itinerary.origin,
+        to: itinerary.destination,
+        overview: overview ? '1' : '0',
+      },
+    });
   };
 
   return (
@@ -94,14 +104,19 @@ Book your trip with SilkSync ✨`;
           </View>
         </View>
 
-        {/* Route Card - Tappable to navigate to cost details */}
-        <TouchableOpacity activeOpacity={0.9} onPress={handleRoutePress}>
+        {/* Route Card */}
+        <View>
           {/* Map Section */}
-          <View style={styles.mapContainer}>
+          <TouchableOpacity activeOpacity={0.9} onPress={() => handleMapOverviewPress(false)}>
+            <View style={styles.mapContainer}>
             {itinerary.sharedLodging && (
-              <View style={styles.sharedBadge}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.sharedBadge}
+                onPress={() => handleMapOverviewPress(true)}
+              >
                 <Text style={styles.sharedBadgeText}>SHARED LODGING INTEREST</Text>
-              </View>
+              </TouchableOpacity>
             )}
             {/* Placeholder for map - replace with actual MapView */}
             <View style={styles.mapPlaceholder}>
@@ -110,7 +125,8 @@ Book your trip with SilkSync ✨`;
                 {itinerary.origin} → {itinerary.destination}
               </Text>
             </View>
-          </View>
+            </View>
+          </TouchableOpacity>
 
           {/* Route Recommendation */}
           <View style={styles.routeSection}>
@@ -119,9 +135,9 @@ Book your trip with SilkSync ✨`;
               <Text style={styles.routeTitle}>
                 {itinerary.origin} to {itinerary.destination} via{"\n"}{itinerary.transportMode}
               </Text>
-              <View style={styles.qrButton}>
+              <TouchableOpacity style={styles.qrButton} onPress={handleRoutePress}>
                 <Ionicons name="qr-code" size={20} color="#2eb296" />
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* Pricing */}
@@ -151,7 +167,7 @@ Book your trip with SilkSync ✨`;
               </TouchableOpacity>
             </View>
           </View>
-        </TouchableOpacity>
+        </View>
 
         <View style={styles.spacer} />
       </ScrollView>
