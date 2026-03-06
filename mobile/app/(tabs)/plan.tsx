@@ -95,7 +95,7 @@ export default function PlanScreen() {
       destination: to,
     });
 
-    router.push('/iternaries' as any);
+    router.push('/(tabs)/itineraries');
   };
 
   return (

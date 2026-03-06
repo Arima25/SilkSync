@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { useWallet } from '@/src/context/WalletContext';
 import * as Location from 'expo-location';
 
+//optional city name to english for better display.
 const CITY_EN_ALIAS: Record<string, string> = {
   '北京': 'Beijing',
   '北京市': 'Beijing',

@@ -469,7 +469,7 @@ export default function Index() {
 
         amapRef.current?.moveCamera({
           target: { latitude: gcjLat, longitude: gcjLng },
-          zoom: 17,
+          zoom: 14,
           duration: 1000,
         });
       } else {
