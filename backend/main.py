@@ -51,11 +51,6 @@ def convert_currency_api():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# ===============================
-# NEW ROUTE SEARCH + BUDGET ENGINE
-# ===============================
-
 @app.route("/search_route", methods=["POST"])
 def search_route():
 
