@@ -142,10 +142,10 @@ def normalize_station_input(name: str) -> str:
     station = re.sub(r"\s+china$", "", station, flags=re.IGNORECASE)
     station = re.sub(r"\s+city$", "", station, flags=re.IGNORECASE)
 
-    # Normalize common Chinese administrative suffixes (e.g. 北京市 -> 北京).
+    # Normalize common Chinese administrative suffixes
     station = re.sub(r"(特别行政区|自治区|自治州|地区|盟|省|市|县|区)$", "", station)
 
-    # If trimming removed too much, fall back to original cleaned token.
+    # If trimming got removed too much then fall back to original cleaned token.
     if not station:
         station = name.strip()
         station = re.sub(r",\s*china$", "", station, flags=re.IGNORECASE)
