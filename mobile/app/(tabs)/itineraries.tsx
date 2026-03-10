@@ -76,7 +76,7 @@ export default function ItinerariesScreen() {
   const savings = soloPrice - togetherPrice;
 
   const handleBack = () => {
-    router.back();
+    router.replace('/(tabs)/plan' as any);
   };
 
   const handleBookNow = () => {
