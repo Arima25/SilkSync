@@ -106,6 +106,7 @@ async def query_tickets(from_station: str, to_station: str, train_date: str):
     })
     return parse_response(raw)
 
+
 # Return Ticket Prices
 async def query_ticket_price(from_station: str, to_station: str, train_date: str, train_code: Optional[str] = None):
     from_station = normalize_station_input(from_station)
@@ -115,6 +116,7 @@ async def query_ticket_price(from_station: str, to_station: str, train_date: str
         args["train_code"] = train_code
     raw = await call_mcp_tool("query-ticket-price", args)
     return parse_response(raw)
+
 
 # Finds journeys that require one transfer when no direct train exists
 async def query_transfer(from_station: str, to_station: str, train_date: str, middle_station: Optional[str] = None):

@@ -14,6 +14,9 @@ export interface ItineraryData {
   origin: string;
   destination: string;
   transportMode: string;
+  days?: number;
+  travelStyle?: string;
+  budget?: number;
   soloPrice: number;
   togetherPrice: number;
   savings: number;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -6,312 +6,258 @@ import {
   TouchableOpacity,
   ScrollView,
   SafeAreaView,
-  Image,
   Share,
   Alert,
-} from 'react-native';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useItinerary } from '@/src/context/ItineraryContext';
-import Constants from "expo-constants";
+  Platform,
+} from "react-native";
+import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useItinerary } from "@/src/context/ItineraryContext";
 
-const host = Constants.expoConfig?.hostUri?.split(":")[0];
-const API_URL = `http://${host}:5001`;
-
-type CurrencyView = 'USD' | 'CNY' | 'side-by-side';
+const BACKEND_BASE_URL =
+  process.env.EXPO_PUBLIC_BACKEND_URL ||
+  (Platform.OS === "android" ? "http://10.0.2.2:5001" : "http://127.0.0.1:5001");
 
 export default function CostScreen() {
   const { itinerary } = useItinerary();
 
-  const [currencyView, setCurrencyView] = useState<CurrencyView>('side-by-side');
   const [backendBudget, setBackendBudget] = useState<any>(null);
+
+  const destination = itinerary?.destination || "Shanghai";
+  const days = itinerary?.days || 3;
+  const style = (itinerary?.travelStyle || "budget").trim().toLowerCase();
+  const tripBudget = itinerary?.budget || 450;
+
+  const [transport, setTransport] = useState(0);
+  const [food, setFood] = useState(0);
+  const [lodging, setLodging] = useState(0);
+  const [activities, setActivities] = useState(0);
+  
 
   const handleBack = () => {
     router.back();
   };
 
-  const handleShare = async () => {
-    try {
-      const shareMessage = `🌏 My Trip Budget - ${itinerary.origin} to ${itinerary.destination}
-
-💰 Total Budget: $${itinerary.totalBudgetUSD.toLocaleString()} USD
-
-Shared via SilkSync ✨`;
-
-      await Share.share({
-        message: shareMessage,
-        title: 'My SilkSync Trip Budget',
-      });
-    } catch (error) {
-      Alert.alert('Error', 'Failed to share itinerary');
-    }
-  };
-
-  /*
-  ---------------------------------------------------------
-  FETCH BUDGET ENGINE
-  ---------------------------------------------------------
-  */
-
   useEffect(() => {
     const fetchBudget = async () => {
       try {
-        const response = await fetch(`${API_URL}/search_route`, {
+        // Use price_for_route: no date in itinerary → backend uses current date (China),
+        // tries next days until tickets found, averages prices for that day (like search.tsx flow)
+        const response = await fetch(`${BACKEND_BASE_URL}/api/trains/price_for_route`, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: itinerary.origin,
-            to: itinerary.destination,
-            date: "2026-03-15",
-            budget: itinerary.totalBudgetUSD
-          })
+            from: itinerary?.origin || "Beijing",
+            to: destination,
+            budget: tripBudget,
+            days: days,
+          }),
         });
 
         const data = await response.json();
-
-        console.log("Budget API response:", data);
-
-        setBackendBudget(data.budget_analysis);
-
-      } catch (err) {
-        console.log("Budget API error:", err);
+        console.log("Budget Engine Response (price_for_route):", data);
+        setBackendBudget(data);
+      } catch (error) {
+        console.log("Budget API failed, using fallback estimates");
+        setBackendBudget(null);
       }
     };
 
     fetchBudget();
-  }, []);
+  }, [destination, days, tripBudget, itinerary?.origin]);
 
-  const formatAmount = (usd: number, cny: number) => {
-    switch (currencyView) {
-      case 'USD':
-        return `$${usd.toFixed(2)}`;
-      case 'CNY':
-        return `¥${cny.toFixed(2)}`;
-      case 'side-by-side':
-      default:
-        return {
-          usd: `$${usd.toFixed(2)}`,
-          cny: `¥${cny.toFixed(2)}`
-        };
+  useEffect(() => {
+    // Backend budget engine returned values
+    const budgetTrip = backendBudget?.budget_analysis?.budget_trip;
+    const luxuryTrip = backendBudget?.budget_analysis?.luxury_trip;
+    console.log("style:", style);
+    console.log("budget transport:", budgetTrip?.transport_cost);
+    console.log("luxury transport:", luxuryTrip?.transport_cost);
+    const trip = style === "luxury" ? luxuryTrip : budgetTrip;
+  
+    if (trip) {
+      const selectedTransport = Number(trip.transport_cost) || 0;
+  
+      setTransport(selectedTransport);
+      setFood(Number(trip.food_cost) || 0);
+      setLodging(Number(trip.hotel_cost) || 0);
+      setActivities(
+        Number(trip.local_transport_cost ?? trip.activity_cost) || 0
+      );
+      return;
     }
-  };
+  
+    // 3️⃣ Final fallback estimates
+    const fallbackTransport =
+      style === "luxury"
+        ? Number(luxuryTrip?.transport_cost || 0)
+        : Number(budgetTrip?.transport_cost || 0);
+  
+    const foodPerDay =
+      style === "luxury" ? 120 : style === "mid" ? 60 : 35;
+  
+    const hotelPerNight =
+      style === "luxury" ? 450 : style === "mid" ? 180 : 90;
+  
+    const activitiesPerDay =
+      style === "luxury" ? 60 : style === "mid" ? 35 : 20;
+  
+    setTransport(fallbackTransport || tripBudget || 450);
+    setFood(foodPerDay * days);
+    setLodging(hotelPerNight * days);
+    setActivities(activitiesPerDay * days);
+  }, [backendBudget, itinerary, days, style, tripBudget]);
 
-  const totalSpent = itinerary.categories.reduce((sum, cat) => sum + cat.amountUSD, 0);
+  // Total must equal sum of displayed categories so the numbers add up
+  const total = transport + food + lodging + activities;
+  
+    const shareBudget = async () => {
+      try {
+        await Share.share({
+          message: `My SilkSync trip to ${destination} for ${days} days costs about ¥${formatPrice(total)}`,
+        });
+      } catch (error) {
+        Alert.alert("Error sharing trip");
+      }
+    };
+  
+  console.log("Sending itinerary:", itinerary)
+
+  const formatPrice = (n: number) =>
+    Number(n).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  const CNY_TO_USD = 0.14;
+
+  const formatUsdFromCny = (n: number) =>
+  Number(n * CNY_TO_USD).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  const Card = ({ title, price, icon }: any) => (
+    <View style={styles.card}>
+      <Ionicons name={icon} size={22} color="#1E88E5" />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.cardTitle}>{title}</Text>
+      </View>
+      <View style={styles.priceBlock}>
+        <Text style={styles.price}>¥{formatPrice(Number(price))}</Text>
+        <Text style={styles.usdPrice}>${formatUsdFromCny(Number(price))}</Text>
+      </View>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack}>
-          <Ionicons name="chevron-back" size={24} />
+          <Ionicons name="arrow-back" size={26} />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>Cost Breakdown</Text>
+        <Text style={styles.title}>Trip Budget</Text>
 
-        <TouchableOpacity onPress={handleShare}>
+        <TouchableOpacity onPress={shareBudget}>
           <Ionicons name="share-outline" size={24} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <Card title="Transport" price={transport} icon="train-outline" />
+        <Card title="Food" price={food} icon="restaurant-outline" />
+        <Card title="Lodging" price={lodging} icon="bed-outline" />
+        <Card title="Activities" price={activities} icon="ticket-outline" />
 
-        {/* Budget Engine Recommendation */}
-        {backendBudget && (
-          <View style={styles.recommendCard}>
-
-            <Text style={styles.recommendTitle}>
-              Smart Budget Recommendation
-            </Text>
-
-            <Text style={styles.recommendText}>
-              Recommended: {backendBudget.recommendation}
-            </Text>
-
-            <View style={styles.optionRow}>
-
-              <View style={styles.optionCard}>
-                <Text style={styles.optionTitle}>Budget Trip</Text>
-
-                <Text>Train: {backendBudget.budget_trip.train_class}</Text>
-                <Text>Hotel: {backendBudget.budget_trip.hotel}</Text>
-
-                <Text style={styles.optionPrice}>
-                  ${backendBudget.budget_trip.total_cost}
-                </Text>
-              </View>
-
-              <View style={styles.optionCard}>
-                <Text style={styles.optionTitle}>Luxury Trip</Text>
-
-                <Text>Train: {backendBudget.luxury_trip.train_class}</Text>
-                <Text>Hotel: {backendBudget.luxury_trip.hotel}</Text>
-
-                <Text style={styles.optionPrice}>
-                  ${backendBudget.luxury_trip.total_cost}
-                </Text>
-              </View>
-
-            </View>
-
+        <View style={styles.totalCard}>
+          <Text style={styles.totalText}>Total Budget</Text>
+          <View style={styles.totalPriceBlock}>
+            <Text style={styles.totalPrice}>¥{formatPrice(total)}</Text>
+            <Text style={styles.totalUsdPrice}>${formatUsdFromCny(total)}</Text>
           </View>
-        )}
-
-        {/* Original UI continues */}
-        <View style={styles.budgetCard}>
-
-          <Text style={styles.budgetTitle}>
-            Total Trip Budget
-          </Text>
-
-          <Text style={styles.budgetAmount}>
-            ${itinerary.totalBudgetUSD.toLocaleString()}
-          </Text>
-
         </View>
-
-        {/* Category Details */}
-
-        {itinerary.categories.map((category) => (
-
-          <View key={category.id} style={styles.categoryItem}>
-
-            <View style={styles.categoryLeft}>
-
-              <Ionicons
-                name={category.icon as any}
-                size={20}
-                color={category.color}
-              />
-
-              <Text style={styles.categoryName}>
-                {category.name}
-              </Text>
-
-            </View>
-
-            <View>
-
-              {currencyView === 'side-by-side' ? (
-                <>
-                  <Text>${category.amountUSD.toFixed(2)}</Text>
-                  <Text>¥{category.amountCNY.toFixed(2)}</Text>
-                </>
-              ) : (
-                <Text>
-                  {formatAmount(category.amountUSD, category.amountCNY) as string}
-                </Text>
-              )}
-
-            </View>
-
-          </View>
-
-        ))}
-
       </ScrollView>
-
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: "#F8FAFF",
   },
-
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#fff'
-  },
-
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600'
-  },
-
-  budgetCard: {
-    backgroundColor: '#fff',
-    margin: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 20,
-    borderRadius: 12
   },
-
-  budgetTitle: {
+  title: {
+    fontSize: 22,
+    fontWeight: "600",
+  },
+  scroll: {
+    padding: 20,
+    gap: 14,
+  },
+  card: {
+    backgroundColor: "white",
+    padding: 18,
+    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  cardTitle: {
     fontSize: 16,
-    fontWeight: '600'
+    fontWeight: "500",
   },
-
-  budgetAmount: {
-    fontSize: 28,
-    fontWeight: '700',
-    marginTop: 8
-  },
-
-  recommendCard: {
-    backgroundColor: '#fff',
-    margin: 16,
-    padding: 20,
-    borderRadius: 12
-  },
-
-  recommendTitle: {
+  price: {
     fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 6
+    fontWeight: "600",
   },
-
-  recommendText: {
+  totalCard: {
+    marginTop: 25,
+    padding: 24,
+    backgroundColor: "#1E88E5",
+    borderRadius: 16,
+    alignItems: "center",
+  },
+  totalText: {
+    color: "white",
+    fontSize: 16,
+  },
+  totalPrice: {
+    color: "white",
+    fontSize: 32,
+    fontWeight: "bold",
+    marginTop: 4,
+  },
+  priceBlock: {
+    flexDirection: "column",
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  
+  usdPrice: {
+    fontSize: 12,
+    color: "#999",
+    marginTop: 2,
+  },
+  
+  totalPriceBlock: {
+    alignItems: "center",
+  },
+  
+  totalUsdPrice: {
+    color: "rgba(255,255,255,0.8)",
     fontSize: 14,
-    marginBottom: 12
+    marginTop: 4,
   },
-
-  optionRow: {
-    flexDirection: 'row',
-    gap: 10
-  },
-
-  optionCard: {
-    flex: 1,
-    backgroundColor: '#F5F5F5',
-    padding: 12,
-    borderRadius: 10
-  },
-
-  optionTitle: {
-    fontWeight: '600',
-    marginBottom: 6
-  },
-
-  optionPrice: {
-    marginTop: 6,
-    fontWeight: '700'
-  },
-
-  categoryItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginBottom: 10,
-    padding: 16,
-    borderRadius: 10
-  },
-
-  categoryLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10
-  },
-
-  categoryName: {
-    fontWeight: '500'
-  }
-
 });

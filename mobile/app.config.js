@@ -7,7 +7,7 @@ export default {
     icon: "./assets/images/icon.png",
     scheme: "mobile",
     userInterfaceStyle: "automatic",
-    newArchEnabled: true,
+    newArchEnabled: false,
 
     ios: {
       bundleIdentifier: "com.bevgo.silksync",

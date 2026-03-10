@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -8,16 +8,72 @@ import {
   SafeAreaView,
   Share,
   Alert,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useWallet } from '@/src/context/WalletContext';
 import { useItinerary } from '@/src/context/ItineraryContext';
 
+const BACKEND_BASE_URL =
+  process.env.EXPO_PUBLIC_BACKEND_URL ||
+  (Platform.OS === 'android' ? 'http://10.0.2.2:5001' : 'http://127.0.0.1:5001');
+
+const formatPrice = (n: number) => Number(n).toFixed(2);
+
 export default function ItinerariesScreen() {
   const { balance } = useWallet();
   const { itinerary } = useItinerary();
   const [isSaved, setIsSaved] = useState(false);
+  const [backendBudget, setBackendBudget] = useState<any>(null);
+
+  const origin = itinerary?.origin;
+  const destination = itinerary?.destination;
+  const style = String(itinerary?.travelStyle || 'budget').trim().toLowerCase();
+  const tripBudget = itinerary?.budget || 0;
+  const days = itinerary?.days || 3;
+  console.log('travelStyle raw:', itinerary?.travelStyle);
+  console.log('normalized style:', style);  
+  useEffect(() => {
+    const fetchBudget = async () => {
+      if (!origin || !destination) return;
+
+      try {
+        const response = await fetch(`${BACKEND_BASE_URL}/api/trains/price_for_route`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: origin,
+            to: destination,
+            budget: tripBudget,
+            days,
+          }),
+        });
+
+        const data = await response.json();
+        console.log('Budget Engine Response (price_for_route):', data);
+        setBackendBudget(data);
+      } catch (error) {
+        console.log('Budget API failed in itineraries.tsx', error);
+        setBackendBudget(null);
+      }
+    };
+
+    fetchBudget();
+  }, [origin, destination, tripBudget, days]);
+
+  const selectedTransport =
+    style === 'luxury'
+      ? Number(backendBudget?.budget_analysis?.luxury_trip?.transport_cost || 0)
+      : Number(backendBudget?.budget_analysis?.budget_trip?.transport_cost || 0);
+
+  const soloPrice =
+    selectedTransport > 0 ? selectedTransport : Number(itinerary?.soloPrice || 0);
+
+  const togetherPrice = soloPrice / 2;
+  const savings = soloPrice - togetherPrice;
 
   const handleBack = () => {
     router.back();
@@ -42,8 +98,8 @@ export default function ItinerariesScreen() {
 
 ${itinerary.origin} to ${itinerary.destination} via ${itinerary.transportMode}
 
-💰 Solo Price: $${itinerary.soloPrice}
-👥 Together Price: $${itinerary.togetherPrice} (Save $${itinerary.savings}!)
+💰 Solo Price: $${formatPrice(soloPrice)}
+👥 Together Price: $${formatPrice(togetherPrice)} (Save ¥${formatPrice(savings)}!)
 
 ${itinerary.sharedLodging ? '🏨 Shared Lodging Interest Available!' : ''}
 
@@ -90,14 +146,18 @@ Book your trip with SilkSync ✨`;
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Title Section */}
-        <Text style={styles.pageTitle}>Budget-Based Route{"\n"}Suggestions</Text>
+        <Text style={styles.pageTitle}>Budget-Based Route{'\n'}Suggestions</Text>
 
         {/* Available Funds */}
         <Text style={styles.fundsLabel}>TOTAL AVAILABLE FUNDS</Text>
         <View style={styles.fundsCard}>
           <Ionicons name="card-outline" size={20} color="#666" />
           <Text style={styles.fundsAmount}>
-            ${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            $
+            {balance.toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
           </Text>
           <View style={styles.currencyBadge}>
             <Text style={styles.currencyText}>USD</Text>
@@ -109,22 +169,22 @@ Book your trip with SilkSync ✨`;
           {/* Map Section */}
           <TouchableOpacity activeOpacity={0.9} onPress={() => handleMapOverviewPress(false)}>
             <View style={styles.mapContainer}>
-            {itinerary.sharedLodging && (
-              <TouchableOpacity
-                activeOpacity={0.85}
-                style={styles.sharedBadge}
-                onPress={() => handleMapOverviewPress(true)}
-              >
-                <Text style={styles.sharedBadgeText}>SHARED LODGING INTEREST</Text>
-              </TouchableOpacity>
-            )}
-            {/* Placeholder for map - replace with actual MapView */}
-            <View style={styles.mapPlaceholder}>
-              <Ionicons name="map" size={80} color="#ccc" />
-              <Text style={styles.mapPlaceholderText}>
-                {itinerary.origin} → {itinerary.destination}
-              </Text>
-            </View>
+              {itinerary.sharedLodging && (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  style={styles.sharedBadge}
+                  onPress={() => handleMapOverviewPress(true)}
+                >
+                  <Text style={styles.sharedBadgeText}>SHARED LODGING INTEREST</Text>
+                </TouchableOpacity>
+              )}
+              {/* Placeholder for map - replace with actual MapView */}
+              <View style={styles.mapPlaceholder}>
+                <Ionicons name="map" size={80} color="#ccc" />
+                <Text style={styles.mapPlaceholderText}>
+                  {itinerary.origin} → {itinerary.destination}
+                </Text>
+              </View>
             </View>
           </TouchableOpacity>
 
@@ -133,7 +193,8 @@ Book your trip with SilkSync ✨`;
             <Text style={styles.routeLabel}>ROUTE RECOMMENDATION</Text>
             <View style={styles.routeHeader}>
               <Text style={styles.routeTitle}>
-                {itinerary.origin} to {itinerary.destination} via{"\n"}{itinerary.transportMode}
+                {itinerary.origin} to {itinerary.destination} via{'\n'}
+                {itinerary.transportMode}
               </Text>
               <TouchableOpacity style={styles.qrButton} onPress={handleRoutePress}>
                 <Ionicons name="qr-code" size={20} color="#2eb296" />
@@ -143,16 +204,18 @@ Book your trip with SilkSync ✨`;
             {/* Pricing */}
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Estimated Total Price</Text>
-              <Text style={styles.priceAmount}>${itinerary.soloPrice.toFixed(2)}</Text>
+              <Text style={styles.priceAmount}>¥{formatPrice(soloPrice)}</Text>
             </View>
 
             {/* Together Savings */}
             <View style={styles.savingsCard}>
               <Ionicons name="people" size={16} color="#2eb296" />
               <View>
-                <Text style={styles.savingsTitle}>Together Price: ${itinerary.togetherPrice}</Text>
+                <Text style={styles.savingsTitle}>
+                  Together Price: ¥{formatPrice(togetherPrice)}
+                </Text>
                 <Text style={styles.savingsSubtitle}>
-                  Save ${itinerary.savings} vs Solo (${itinerary.soloPrice})
+                  Save ¥{formatPrice(savings)} vs Solo (¥{formatPrice(soloPrice)})
                 </Text>
               </View>
             </View>

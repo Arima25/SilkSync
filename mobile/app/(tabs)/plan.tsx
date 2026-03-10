@@ -13,6 +13,10 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useItinerary } from '@/src/context/ItineraryContext';
+import Constants from "expo-constants";
+
+const host = Constants.expoConfig?.hostUri?.split(":")[0];
+const API_URL = `http://${host}:5001`;
 
 const DURATION_OPTIONS = ['3 Days', '5 Days', '7 Days'];
 const TRAVEL_STYLES = [
@@ -85,17 +89,66 @@ export default function PlanScreen() {
     loadCurrentLocation();
   }, []);
 
-  const handleGenerateItinerary = () => {
+  const handleGenerateItinerary = async () => {
     const from = currentLocation.trim() || itinerary.origin;
     const to = destination.trim() || itinerary.destination;
+    const days = DURATION_OPTIONS.indexOf(selectedDuration) >= 0
+      ? parseInt(selectedDuration, 10)
+      : 3;
 
-    setItinerary({
-      ...itinerary,
-      origin: from,
-      destination: to,
-    });
+    try {
+      // Use price_for_route: no date from user → backend uses current date (China),
+      // tries next days until it finds tickets, then averages prices for that day
+      const res = await fetch(`${API_URL}/api/trains/price_for_route`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: from,
+          to: to,
+          budget: itinerary.totalBudgetUSD || 600,
+          days: days
+        })
+      });
 
-    router.push('/(tabs)/itineraries');
+      const data = await res.json();
+
+      console.log("Budget Engine Response (price_for_route):", data);
+
+      const price =
+        data?.average_ticket_price ??
+        data?.budget_analysis?.budget_trip?.transport_cost ??
+        data?.budget_analysis?.budget_trip?.total_cost ??
+        500;
+
+      const updatedCategories = itinerary.categories.map(cat =>
+        cat.name === "Transport"
+          ? {
+              ...cat,
+              amountUSD: price,
+              amountCNY: price * 7.2
+            }
+          : cat
+      );
+
+      setItinerary({
+        ...itinerary,
+        origin: from,
+        destination: to,
+        days,
+        soloPrice: price,
+        togetherPrice: price * 0.75,
+        savings: price * 0.25,
+        transportMode: "HSR Train",
+        travelStyle: selectedTravelStyle,
+        categories: updatedCategories
+      });
+
+      router.push('/(tabs)/itineraries');
+    } catch (err) {
+      console.log("Budget Engine Error:", err);
+    }
   };
 
   return (
