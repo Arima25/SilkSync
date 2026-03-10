@@ -81,7 +81,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
           const userDoc = await getDoc(userDocRef);
           
           if (userDoc.exists()) {
-            const existingProfile = userDoc.data() as UserProfile;
+            const rawProfile = userDoc.data() as Partial<UserProfile>;
+            const existingProfile: UserProfile = {
+              ...defaultProfile,
+              ...rawProfile,
+              uid: firebaseUser.uid,
+              displayName: rawProfile.displayName || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+              email: rawProfile.email || firebaseUser.email || '',
+              photoURL: rawProfile.photoURL ?? firebaseUser.photoURL,
+              journeyImages: Array.isArray(rawProfile.journeyImages) ? rawProfile.journeyImages : [],
+              totalStops: Array.isArray(rawProfile.journeyImages)
+                ? rawProfile.journeyImages.length
+                : Number(rawProfile.totalStops) || 0,
+            };
             console.log('Found existing profile:', existingProfile.displayName);
             setProfile(existingProfile);
           } else {
@@ -144,7 +156,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const addJourneyImage = async (image: JourneyImage) => {
     if (!profile) return;
     
-    const updatedImages = [...profile.journeyImages, image];
+    const currentImages = Array.isArray(profile.journeyImages) ? profile.journeyImages : [];
+    const updatedImages = [...currentImages, image];
     await updateProfile({ 
       journeyImages: updatedImages,
       totalStops: updatedImages.length 
@@ -154,7 +167,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const removeJourneyImage = async (imageId: string) => {
     if (!profile) return;
     
-    const updatedImages = profile.journeyImages.filter((img) => img.id !== imageId);
+    const currentImages = Array.isArray(profile.journeyImages) ? profile.journeyImages : [];
+    const updatedImages = currentImages.filter((img) => img.id !== imageId);
     await updateProfile({ 
       journeyImages: updatedImages,
       totalStops: updatedImages.length 

@@ -25,6 +25,7 @@ const IMAGE_SIZE = (SCREEN_WIDTH - 64) / 3;
 
 export default function Profile() {
   const { user, profile, loading, updateProfile, updateSocialIntent, addJourneyImage, removeJourneyImage, updateProfilePhoto } = useUser();
+  const journeyImages = Array.isArray(profile?.journeyImages) ? profile.journeyImages : [];
   
   const [showSettings, setShowSettings] = useState(false);
   const [showSocialIntentPicker, setShowSocialIntentPicker] = useState(false);
@@ -249,12 +250,12 @@ export default function Profile() {
         {/* My Journeys Section */}
         <View style={styles.journeysHeader}>
           <Text style={styles.journeysTitle}>MY JOURNEYS</Text>
-          <Text style={styles.journeysCount}>{profile?.journeyImages?.length || 0} stops</Text>
+          <Text style={styles.journeysCount}>{journeyImages.length} stops</Text>
         </View>
 
         {/* Image Grid */}
         <View style={styles.imageGrid}>
-          {profile?.journeyImages.map((image) => (
+          {journeyImages.map((image) => (
             <TouchableOpacity
               key={image.id}
               style={styles.imageContainer}

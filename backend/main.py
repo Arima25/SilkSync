@@ -108,6 +108,90 @@ def convert_currency_api():
         return jsonify({"error": str(e)}), 500
 
 
+# Check-In to Journey
+@app.route("/api/check-in", methods=["POST"])
+def check_in():
+    """
+    Check in a user to a specific train journey.
+    Creates or joins an existing journey for that train and date.
+    """
+    try:
+        data = request.get_json()
+        
+        user_id = data.get("userId")
+        user_name = data.get("userName")
+        user_photo = data.get("userPhoto")
+        train_number = data.get("trainNumber")
+        departure_date = data.get("departureDate")
+        departure_station = data.get("departureStation")
+        arrival_station = data.get("arrivalStation")
+        social_intent = data.get("socialIntent")
+        
+        if not all([user_id, user_name, train_number, departure_date, departure_station, arrival_station]):
+            return jsonify({"error": "Missing required fields"}), 400
+        
+        # Create journey ID (format: trainNumber-departureDate)
+        journey_id = f"{train_number}-{departure_date}"
+        
+        # Initialize journey if not exists
+        if journey_id not in train_travelers:
+            train_travelers[journey_id] = {
+                "trainNumber": train_number,
+                "departureDate": departure_date,
+                "departureStation": departure_station,
+                "arrivalStation": arrival_station,
+                "travelers": [],
+                "createdAt": datetime.now().isoformat()
+            }
+        
+        # Check if user already checked in
+        journey = train_travelers[journey_id]
+        user_already_in = any(traveler["userId"] == user_id for traveler in journey["travelers"])
+        
+        if not user_already_in:
+            # Add traveler to journey
+            traveler_info = {
+                "userId": user_id,
+                "userName": user_name,
+                "userPhoto": user_photo,
+                "socialIntent": social_intent,
+                "checkedInAt": datetime.now().isoformat()
+            }
+            journey["travelers"].append(traveler_info)
+        
+        return jsonify({
+            "success": True,
+            "journeyId": journey_id,
+            "message": f"Successfully checked in to {train_number} on {departure_date}"
+        }), 200
+    
+    except Exception as e:
+        print(f"Check-in error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# Get Journey Travelers
+@app.route("/api/train-travelers/<journey_id>", methods=["GET"])
+def get_train_travelers(journey_id):
+    """
+    Get list of travelers for a specific train journey.
+    """
+    try:
+        if journey_id not in train_travelers:
+            return jsonify({
+                "travelers": []
+            }), 200
+        
+        journey = train_travelers[journey_id]
+        return jsonify({
+            "travelers": journey.get("travelers", [])
+        }), 200
+    
+    except Exception as e:
+        print(f"Error fetching travelers: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 # ===============================
 # NEW ROUTE SEARCH + BUDGET ENGINE
 # ===============================
