@@ -89,9 +89,7 @@ async def get_average_ticket_price_for_route(
     return (None, None)
 
 
-# -----------------------------
-# CITY TIERS (China economic tiers)
-# -----------------------------
+# China's cities based off of economic tiers
 CITY_TIERS = {
     # Tier 1 (most expensive)
     "Shanghai": 1,
@@ -114,9 +112,7 @@ CITY_TIERS = {
     "Suzhou": 3
 }
 
-# -----------------------------
-# COST MULTIPLIERS BY TIER
-# -----------------------------
+# Cost multipliers based off of city tiers
 TIER_MULTIPLIER = {
     1: 1.4,  # Shanghai / Beijing
     2: 1.15, # Chengdu / Hangzhou
@@ -147,9 +143,7 @@ def _to_float(v) -> float | None:
         return None
 
 
-# -----------------------------
-# MAIN BUDGET FUNCTION
-# -----------------------------
+# Budget calculation engine
 def calculate_trip_options(train_prices: dict, user_budget: float, destination: str, days: int = 3):
     """
     Generates budget vs luxury trip options using:
@@ -159,9 +153,7 @@ def calculate_trip_options(train_prices: dict, user_budget: float, destination: 
 
     multiplier = get_city_multiplier(destination)
     print("TRAIN PRICES RECEIVED:", train_prices)
-    # -----------------------------
-    # REAL TRAIN PRICES (normalize: API may return strings)
-    # -----------------------------
+    # Return real train prices for budget engine.
     budget_prices = []
     luxury_prices = []
 
@@ -180,9 +172,7 @@ def calculate_trip_options(train_prices: dict, user_budget: float, destination: 
             luxury_prices.append(p)
 
 
-    # -----------------------------
-    # Calculate averages
-    # -----------------------------
+    # Calculation of averages based off of budget vs luxury seats
     transport_budget = (
         sum(budget_prices) / len(budget_prices)
         if budget_prices else None
@@ -204,33 +194,23 @@ def calculate_trip_options(train_prices: dict, user_budget: float, destination: 
     print("LUXURY SEATS FOUND:", luxury_prices)
     print("BUDGET AVG:", transport_budget)
     print("LUXURY AVG:", transport_luxury)
-    # -----------------------------
-    # HOTEL COSTS (per night)
-    # -----------------------------
+    # Budget vs Luxury Hotel Costs
     budget_hotel = int(300 * multiplier * days)
     luxury_hotel = int(900 * multiplier * days)
 
-    # -----------------------------
-    # FOOD COST ESTIMATES (per day)
-    # -----------------------------
+    # Budget vs Luxury Food Costs
     budget_food = int(60 * multiplier * days)
     luxury_food = int(200 * multiplier * days)
 
-    # -----------------------------
-    # LOCAL TRANSPORT (per day)
-    # -----------------------------
+    # Budget vs Luxury Local Transport costs
     metro_cost = int(20 * multiplier * days)
     taxi_cost = int(120 * multiplier * days)
 
-    # -----------------------------
-    # TOTAL COSTS
-    # -----------------------------
+    # Budget vs Luxury Total costs
     budget_total = transport_budget + budget_hotel + metro_cost + budget_food
     luxury_total = transport_luxury + luxury_hotel + taxi_cost + luxury_food
 
-    # -----------------------------
-    # RECOMMENDATION
-    # -----------------------------
+    # Provided recommendation based off of users budget
     if user_budget >= luxury_total:
         recommendation = "luxury"
     elif user_budget >= budget_total:
