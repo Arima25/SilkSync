@@ -1,89 +1,194 @@
 # SilkSync
 
-## Setup for MCP Server
+SilkSync is a mobile travel app (Expo/React Native) with a Flask backend and 12306 MCP integration for real-time China train data.
 
-The app requires two servers running simultaneously: the 12306 MCP server (fetches real train data on port 8000) and the Silksync backend (our API, on port 5001).
+---
 
-## First-Time Setup
+## Architecture
 
-### Install uv
+This repo uses **3 running processes** during development:
 
-**Windows (PowerShell):**
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+1. **12306 MCP server** (external repo) — default `:8000`
+2. **SilkSync backend (Flask)** — default `:5001`
+3. **SilkSync mobile app (Expo)**
+
+---
+
+## Prerequisites
+
+- **Node.js** 18+ and npm
+- **Python** 3.10+
+- **Git**
+- **uv** (for MCP server)
+- Android Studio emulator or physical device (recommended for Android testing)
+
+---
+
+## 1) Clone SilkSync
+
+```bash
+git clone <your-silksync-repo-url>
+cd SilkSync
 ```
 
-**Mac/Linux:**
+---
+
+## 2) Set up MCP server (first time)
+
+> Clone this **outside** SilkSync.
+
+```bash
+cd /Users/<your-user>/Desktop
+git clone https://github.com/drfccv/mcp-server-12306.git
+cd mcp-server-12306
+```
+
+Install `uv` (macOS/Linux):
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-After installing, uv will print a PATH instruction like this:
-```
-To add uv to your PATH, run:
-    set Path=C:\Users\yourname\.local\bin;%Path%   (cmd)
-```
-
-Run whichever line matches your terminal. check that it worked.
+If `uv` command is not found:
 ```bash
-uv --version
+source "$HOME/.local/bin/env"
 ```
 
-
----
-
-### Clone the MCP server
-
-Clone this **outside** the SilkSync folder.
+Install deps + station database:
 ```bash
-git clone https://github.com/drfccv/mcp-server-12306.git
-cd mcp-server-12306
 uv sync
 uv run python scripts/update_stations.py
 ```
 
-Make sure you do the last command since it is to download the national station database. It must be run before anything else or all queries will fail.
-
 ---
 
-### Set up the SILKSYNC backend
+## 3) Set up SilkSync backend
+
 ```bash
-cd SilkSync/backend
+cd /Users/<your-user>/Desktop/SilkSync/backend
 pip install -r requirement.txt
 ```
 
-Add this to the .env file
+Create/edit `.env` in `backend/`:
 ```env
-MCP_SERVER_URL=http://localhost:8000
+MCP_SERVER_URL=http://127.0.0.1:8000
 ```
 
 ---
 
-## Running the Project
+## 4) Set up mobile app
 
-Open two terminals every time you work on the backend.
-
-**Terminal 1 — MCP server:**
 ```bash
-cd mcp-server-12306
+cd /Users/<your-user>/Desktop/SilkSync/mobile
+npm install
+```
+
+Create/edit `.env` in `mobile/`:
+
+```env
+# Mapbox
+EXPO_PUBLIC_MAPBOX_PUBLIC_TOKEN=your_mapbox_token
+
+# AMap SDK keys (native)
+EXPO_PUBLIC_AMAP_ANDROID_API_KEY=your_amap_android_key
+EXPO_PUBLIC_AMAP_IOS_API_KEY=your_amap_ios_key
+
+# AMap Web API key (geocoding/reverse geocode)
+EXPO_PUBLIC_AMAP_WEB_API_KEY=your_amap_web_key
+
+# Backend URL:
+# Android emulator should use 10.0.2.2
+EXPO_PUBLIC_BACKEND_URL=http://10.0.2.2:5001
+# iOS simulator/mac can use:
+# EXPO_PUBLIC_BACKEND_URL=http://127.0.0.1:5001
+```
+
+---
+
+## 5) Run the project (every time)
+
+Open **3 terminals**.
+
+### Terminal A — MCP server
+```bash
+cd /Users/<your-user>/Desktop/mcp-server-12306
 uv run python scripts/start_server.py
 ```
 
-**Terminal 2 — SILKSYNC backend:**
+### Terminal B — SilkSync backend
 ```bash
-cd SilkSync/backend
-python main.py
+cd /Users/<your-user>/Desktop/SilkSync/backend
+python -u main.py
+```
+
+### Terminal C — Mobile app
+```bash
+cd /Users/<your-user>/Desktop/SilkSync/mobile
+npx expo start -c
+```
+
+Then press:
+- `a` for Android emulator
+- or scan QR for device
+
+---
+
+## 6) Quick health checks
+
+Open in browser:
+
+- MCP docs: `http://127.0.0.1:8000/docs`
+- MCP health: `http://127.0.0.1:8000/health`
+- Backend time: `http://127.0.0.1:5001/api/trains/current-time`
+- Station search: `http://127.0.0.1:5001/api/trains/stations/search?q=beijing`
+
+If station search returns data, train integration is connected.
+
+---
+
+## Common issues
+
+### 1) Mobile cannot reach backend
+- Android emulator must use:
+  - `EXPO_PUBLIC_BACKEND_URL=http://10.0.2.2:5001`
+- Restart Expo after `.env` change:
+```bash
+npx expo start -c
+```
+
+### 2) “Current location unavailable”
+- Enable location services in emulator/device
+- Set a mock location in emulator controls
+
+### 3) No train routes returned
+- Confirm both MCP (`:8000`) and backend (`:5001`) are running
+- Test route API directly:
+```bash
+curl "http://127.0.0.1:5001/api/trains/route?from_station=北京&to_station=上海&train_date=2026-03-10"
+```
+
+### 4) Port already in use
+```bash
+lsof -i :8000
+lsof -i :5001
+kill -9 <PID>
 ```
 
 ---
 
-## Verify It's Working
+## Test command (backend)
 
-With both servers running, open these in your browser:
-```
-http://localhost:8000/docs        — MCP server
-http://localhost:5001/api/trains/stations/search?q=beijing   — station search
-http://localhost:5001/api/trains/current-time                — current time
+```bash
+cd /Users/<your-user>/Desktop/SilkSync/backend
+pytest
 ```
 
-If station search returns a list of Beijing stations, everything is working.
+---
+
+## Release note
+
+This MVP includes:
+- location detection
+- itinerary generation flow
+- train search with real 12306-backed data
+- map route rendering on AMap
+- currency display support
