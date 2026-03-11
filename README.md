@@ -1,6 +1,8 @@
 # SilkSync
 
-SilkSync is a mobile travel app (Expo/React Native) with a Flask backend and 12306 MCP integration for real-time China train data.
+SilkSync is a smart travel planning app for China. It helps users plan trips creating AI itinerary generation, getting real-time 12306 train data, and map-based route visualization. Users can set an origin and destination, compare train options, view station by station routes, and estimate trip costs with currency conversion support.
+
+It is designed for travelers who want a fast, mobile first way to organize transportation and trip flow in one place.
 
 ---
 
