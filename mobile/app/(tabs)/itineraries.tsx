@@ -15,9 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useWallet } from '@/src/context/WalletContext';
 import { useItinerary } from '@/src/context/ItineraryContext';
 
-const BACKEND_BASE_URL =
-  process.env.EXPO_PUBLIC_BACKEND_URL ||
-  (Platform.OS === 'android' ? 'http://10.0.2.2:5001' : 'http://127.0.0.1:5001');
+const BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL!;
 
 const formatPrice = (n: number) => Number(n).toFixed(2);
 
