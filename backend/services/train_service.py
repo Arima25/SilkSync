@@ -8,7 +8,7 @@ from services.translations import bilingual_station, bilingual_seats, normalize_
 load_dotenv()
 MCP_BASE_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000")
 
-# Opens a new session with the MCP server
+#Opens a new session with the MCP server
 async def get_session_id() -> str:
     async with httpx.AsyncClient(timeout=30.0) as client:
         res = await client.post(
@@ -29,13 +29,13 @@ async def get_session_id() -> str:
             }
         )
         
-        # Debugging Code
+        #Debugging Code
         #print("SESSION STATUS:", res.status_code)
         #print("SESSION RESPONSE:", res.text)
         session_id = res.headers.get("mcp-session-id")
         return session_id
 
-# Function to call any tool on the MCP server
+#Function to call any tool on the MCP server
 async def call_mcp_tool(tool_name: str, arguments: dict):
     session_id = await get_session_id()
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -67,7 +67,7 @@ def parse_response(raw: dict) -> dict:
     except Exception:
         return {"success": False, "error": "Failed to parse MCP response"}
 
-# Filters out trains with no schedule data (sold out or unavailable)
+#Filters out trains with no schedule data (sold out or unavailable)
 def filter_valid_trains(trains: list) -> list:
     return [t for t in trains if t.get("start_time") != "24:00" and t.get("duration") != "99:59"]
 
@@ -90,12 +90,12 @@ def format_transfer(transfer: dict) -> dict:
         "legs": [format_train(seg) for seg in transfer.get("segments", [])]
     }
 
-# Search Stations by name, pinyin or abbreviated pinyin (e.g. "bj" for Beijing)
+#Search Stations by name, pinyin or abbreviated pinyin (e.g. "bj" for Beijing)
 async def search_stations(query: str, limit: int = 10):
     raw = await call_mcp_tool("search-stations", {"query": query, "limit": limit})
     return parse_response(raw)
 
-# Returns all available trains between two stations on a given date
+#Returns all available trains between two stations on a given date
 async def query_tickets(from_station: str, to_station: str, train_date: str):
     from_station = normalize_station_input(from_station)
     to_station = normalize_station_input(to_station)
@@ -107,7 +107,7 @@ async def query_tickets(from_station: str, to_station: str, train_date: str):
     return parse_response(raw)
 
 
-# Return Ticket Prices
+#Return Ticket Prices
 async def query_ticket_price(from_station: str, to_station: str, train_date: str, train_code: Optional[str] = None):
     from_station = normalize_station_input(from_station)
     to_station = normalize_station_input(to_station)
@@ -118,7 +118,7 @@ async def query_ticket_price(from_station: str, to_station: str, train_date: str
     return parse_response(raw)
 
 
-# Finds journeys that require one transfer when no direct train exists
+#Finds journeys that require one transfer when no direct train exists
 async def query_transfer(from_station: str, to_station: str, train_date: str, middle_station: Optional[str] = None):
     from_station = normalize_station_input(from_station)
     to_station = normalize_station_input(to_station)
@@ -128,7 +128,7 @@ async def query_transfer(from_station: str, to_station: str, train_date: str, mi
     raw = await call_mcp_tool("query-transfer", args)
     return parse_response(raw)
 
-# Returns every stop a specific train makes, with arrival and departure times.
+#Returns every stop a specific train makes, with arrival and departure times.
 async def get_train_stops(train_no: str, from_station: str, to_station: str, train_date: str):
     from_station = normalize_station_input(from_station)
     to_station = normalize_station_input(to_station)
@@ -140,7 +140,7 @@ async def get_train_stops(train_no: str, from_station: str, to_station: str, tra
     })
     return parse_response(raw)
 
-# Converts a human readbable train code (e.g. G1) to interal train_no for get_train_stops
+#Converts a human readbable train code (e.g. G1) to interal train_no for get_train_stops
 async def get_train_no(train_code: str, from_station: str, to_station: str, train_date: str):
     from_station = normalize_station_input(from_station)
     to_station = normalize_station_input(to_station)
@@ -152,17 +152,17 @@ async def get_train_no(train_code: str, from_station: str, to_station: str, trai
     })
     return parse_response(raw)
 
-# Returns the current date and time in China timezone
+#Returns the current date and time in China timezone
 async def get_current_time():
     raw = await call_mcp_tool("get-current-time", {})
     return parse_response(raw)
 
-# Used to convert user's current map position into list of stations (goes from nearest to furthest)
+#Used to convert user's current map position into list of stations (goes from nearest to furthest)
 async def get_nearest_stations(city_name: str):
     raw = await call_mcp_tool("search-stations", {"query": city_name, "limit": 5})
     return parse_response(raw)
 
-# Routing function from nearest station to destination
+#Routing function from nearest station to destination
 async def get_route(from_station: str, to_station: str, train_date: str):
     from_station = normalize_station_input(from_station)
     to_station = normalize_station_input(to_station)
