@@ -6,12 +6,8 @@ from dotenv import load_dotenv
 
 CURRENT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = CURRENT_DIR.parent
-ROOT_DIR = BACKEND_DIR.parent
 
-# Load env files from likely dev locations.
 load_dotenv(BACKEND_DIR / ".env")
-load_dotenv(ROOT_DIR / ".env")
-load_dotenv(ROOT_DIR / "mobile" / ".env")
 
 # Documentation: https://fxratesapi.com/docs
 API_HOST = "api.fxratesapi.com"

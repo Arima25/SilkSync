@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebase/firebase';
+import { logger } from '@/lib/logger';
 
 export type SocialIntent = 
   | 'searching_friends'
@@ -71,7 +72,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('Auth state changed:', firebaseUser?.email || 'No user');
+      logger.log('Auth state changed:', firebaseUser?.email || 'No user');
       setUser(firebaseUser);
       
       if (firebaseUser) {
@@ -94,7 +95,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
                 ? rawProfile.journeyImages.length
                 : Number(rawProfile.totalStops) || 0,
             };
-            console.log('Found existing profile:', existingProfile.displayName);
+            logger.log('Found existing profile:', existingProfile.displayName);
             setProfile(existingProfile);
           } else {
             // Create new profile for first-time users
@@ -105,12 +106,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
               email: firebaseUser.email || '',
               photoURL: firebaseUser.photoURL,
             };
-            console.log('Creating new profile for:', newProfile.displayName);
+            logger.log('Creating new profile for:', newProfile.displayName);
             await setDoc(userDocRef, newProfile);
             setProfile(newProfile);
           }
         } catch (error) {
-          console.error('Error fetching/creating user profile:', error);
+          logger.error('Error fetching/creating user profile:', error);
           // Fallback: create a local profile from Firebase auth data
           const fallbackProfile: UserProfile = {
             ...defaultProfile,
@@ -139,7 +140,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       await updateDoc(userDocRef, updates);
       setProfile((prev) => prev ? { ...prev, ...updates } : null);
     } catch (error) {
-      console.error('Error updating profile:', error);
+      logger.error('Error updating profile:', error);
       // Still update local state
       setProfile((prev) => prev ? { ...prev, ...updates } : null);
     }

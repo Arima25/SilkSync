@@ -17,15 +17,26 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useUser } from '../../src/context/UserContext';
+import { logger } from '@/lib/logger';
 import {
   subscribeToChatMessages,
   sendChatMessage,
   sendCoordinationMessage,
   getTrainTravelers,
+  checkJourneyDisruption,
+  formatAlternativesSummary,
   ChatMessage,
   Traveler,
   getSocialIntentBadge,
 } from '../../src/services/trainChatService';
+import {
+  blockUser,
+  getBlockedUserIds,
+  reportUser,
+  ReportReason,
+  REPORT_REASON_LABELS,
+} from '../../src/services/safetyService';
+import { getCoTravelers, CoTraveler } from '../../src/services/trustService';
 
 type TabType = 'Chat' | 'Traveler List';
 
@@ -39,6 +50,15 @@ export default function ChatRoomScreen() {
   const journeyId = params.journeyId as string;
   const departureStation = params.departureStation as string || 'Shanghai';
   const arrivalStation = params.arrivalStation as string || 'Beijing';
+  const departureStationZh = params.departureStationZh as string | undefined;
+  const arrivalStationZh = params.arrivalStationZh as string | undefined;
+  const departureTime = params.departureTime as string | undefined;
+  // journeyId is built server-side as `${trainNumber}-${departureDate}` -- recover the date from it.
+  const departureDate =
+    (params.departureDate as string | undefined) ||
+    (journeyId?.startsWith(`${trainNumber}-`) ? journeyId.slice(trainNumber.length + 1) : '');
+  const soloPrice = Number(params.price);
+  const hasPrice = Number.isFinite(soloPrice) && soloPrice > 0;
 
   // State
   const [activeTab, setActiveTab] = useState<TabType>('Chat');
@@ -49,11 +69,98 @@ export default function ChatRoomScreen() {
   const [showCoordinationModal, setShowCoordinationModal] = useState(false);
   const [coordinationType, setCoordinationType] = useState<'pickup' | 'meal' | 'dining-car' | 'general'>('pickup');
   const [coordinationMessage, setCoordinationMessage] = useState('');
-  
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
+  const [reportTarget, setReportTarget] = useState<Traveler | null>(null);
+  const [reportReason, setReportReason] = useState<ReportReason>('harassment');
+  const [reportMessage, setReportMessage] = useState('');
+  const [submittingReport, setSubmittingReport] = useState(false);
+  const [priorCoTravelerIds, setPriorCoTravelerIds] = useState<Set<string>>(new Set());
+
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Check if user has joined (checked in)
   const userHasJoined = travelers.some(t => t.userId === user?.uid);
+
+  // Hide anyone the current user has blocked
+  const visibleTravelers = travelers.filter(t => !blockedUserIds.includes(t.userId));
+  const visibleMessages = messages.filter(m => !blockedUserIds.includes(m.userId));
+
+  // Load blocked users
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    getBlockedUserIds(user.uid).then(setBlockedUserIds);
+  }, [user?.uid]);
+
+  // Load users the current user has verifiably shared a *different* journey with before,
+  // so returning travelers can be flagged as more trusted than someone just met.
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    getCoTravelers(user.uid).then((coTravelers: CoTraveler[]) => {
+      const priorIds = coTravelers
+        .filter((c) => c.journeyId !== journeyId)
+        .map((c) => c.userId);
+      setPriorCoTravelerIds(new Set(priorIds));
+    });
+  }, [user?.uid, journeyId]);
+
+  const handleBlockTraveler = (traveler: Traveler) => {
+    if (!user?.uid) return;
+
+    Alert.alert(
+      'Block this traveler?',
+      `You won't see messages or check-ins from ${traveler.userName} anymore.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await blockUser(user.uid, traveler.userId);
+              setBlockedUserIds((prev) => [...prev, traveler.userId]);
+            } catch {
+              Alert.alert('Error', 'Failed to block this traveler. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleOpenReport = (traveler: Traveler) => {
+    setReportTarget(traveler);
+    setReportReason('harassment');
+    setReportMessage('');
+  };
+
+  const handleSubmitReport = async () => {
+    if (!user?.uid || !reportTarget) return;
+
+    setSubmittingReport(true);
+    try {
+      await reportUser(user.uid, reportTarget.userId, reportReason, reportMessage.trim(), journeyId);
+      setReportTarget(null);
+      Alert.alert('Report submitted', 'Thanks for letting us know. Our team will review it.');
+    } catch {
+      Alert.alert('Error', 'Failed to submit report. Please try again.');
+    } finally {
+      setSubmittingReport(false);
+    }
+  };
+
+  const handleTravelerMenu = (traveler: Traveler) => {
+    Alert.alert(
+      traveler.userName,
+      undefined,
+      [
+        { text: 'Report', style: 'destructive', onPress: () => handleOpenReport(traveler) },
+        { text: 'Block', style: 'destructive', onPress: () => handleBlockTraveler(traveler) },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
 
   // Load travelers list
   useEffect(() => {
@@ -64,17 +171,46 @@ export default function ChatRoomScreen() {
         const travelersList = await getTrainTravelers(journeyId);
         setTravelers(travelersList);
       } catch (error) {
-        console.error('Error loading travelers:', error);
+        logger.error('Error loading travelers:', error);
       }
     };
 
     loadTravelers();
-    
+
     // Refresh travelers list every 30 seconds
     const interval = setInterval(loadTravelers, 30000);
-    
+
     return () => clearInterval(interval);
   }, [journeyId]);
+
+  // Re-check the journey's schedule against 12306 and post an in-chat alert the
+  // first time it flips to disrupted, reusing the same 30s cadence as the traveler refresh.
+  useEffect(() => {
+    if (!journeyId) return;
+
+    const runDisruptionCheck = async () => {
+      const result = await checkJourneyDisruption(journeyId);
+      if (!result || !result.justTransitioned || result.status !== 'disrupted') return;
+
+      try {
+        await sendChatMessage(
+          journeyId,
+          'system',
+          'SilkSync',
+          null,
+          `⚠️ Train ${trainNumber} appears unavailable for ${departureDate || 'this date'}. ${formatAlternativesSummary(result.alternatives)}`,
+          'system'
+        );
+      } catch (error) {
+        logger.error('Failed to post disruption alert:', error);
+      }
+    };
+
+    runDisruptionCheck();
+    const interval = setInterval(runDisruptionCheck, 30000);
+
+    return () => clearInterval(interval);
+  }, [journeyId, trainNumber, departureDate]);
 
   // Subscribe to chat messages
   useEffect(() => {
@@ -115,7 +251,7 @@ export default function ChatRoomScreen() {
       setNewMessage('');
     } catch (error) {
       Alert.alert('Error', 'Failed to send message');
-      console.error('Send message error:', error);
+      logger.error('Send message error:', error);
     }
   };
 
@@ -135,8 +271,22 @@ export default function ChatRoomScreen() {
       setShowCoordinationModal(false);
     } catch (error) {
       Alert.alert('Error', 'Failed to send coordination message');
-      console.error('Send coordination error:', error);
+      logger.error('Send coordination error:', error);
     }
+  };
+
+  const handleOpenStationCard = () => {
+    const cardParams = new URLSearchParams({
+      journeyId,
+      trainNumber,
+      departureStation,
+      arrivalStation,
+      departureDate,
+      departureTime: departureTime || '--:--',
+      ...(departureStationZh ? { departureStationZh } : {}),
+      ...(arrivalStationZh ? { arrivalStationZh } : {}),
+    });
+    router.push(`/(tabs)/station-card?${cardParams.toString()}`);
   };
 
   const formatMessageTime = (timestamp: any): string => {
@@ -178,7 +328,7 @@ export default function ChatRoomScreen() {
       );
     }
 
-    if (messages.length === 0) {
+    if (visibleMessages.length === 0) {
       return (
         <View style={styles.emptyStateContainer}>
           <View style={styles.emptyStateIcon}>
@@ -199,10 +349,19 @@ export default function ChatRoomScreen() {
         contentContainerStyle={styles.messagesContent}
         showsVerticalScrollIndicator={false}
       >
-        {messages.map((message) => {
+        {visibleMessages.map((message) => {
+          if (message.messageType === 'system') {
+            return (
+              <View key={message.id} style={styles.systemMessageRow}>
+                <Ionicons name="alert-circle" size={16} color="#B45309" />
+                <Text style={styles.systemMessageText}>{message.message}</Text>
+              </View>
+            );
+          }
+
           const isOwnMessage = message.userId === user?.uid;
           const badge = getSocialIntentBadge(
-            travelers.find(t => t.userId === message.userId)?.socialIntent || 'open_to_connect'
+            visibleTravelers.find(t => t.userId === message.userId)?.socialIntent || 'open_to_connect'
           );
 
           return (
@@ -276,7 +435,7 @@ export default function ChatRoomScreen() {
   };
 
   const renderTravelerList = () => {
-    if (travelers.length === 0) {
+    if (visibleTravelers.length === 0) {
       return (
         <View style={styles.emptyStateContainer}>
           <View style={styles.emptyStateIcon}>
@@ -290,14 +449,67 @@ export default function ChatRoomScreen() {
       );
     }
 
+    // Cost split reflects everyone actually checked in, not just who's visible after blocking.
+    const perPersonPrice = hasPrice ? soloPrice / travelers.length : null;
+    const savings = hasPrice ? soloPrice - (perPersonPrice as number) : null;
+
+    // Self-reported at check-in -- surfaces travelers in the same physical carriage,
+    // not just the same train, which is a much stronger social signal.
+    const myCoach = travelers.find(t => t.userId === user?.uid)?.coach || null;
+    const sortedTravelers = myCoach
+      ? [...visibleTravelers].sort((a, b) => {
+          const aMatch = a.coach === myCoach ? 0 : 1;
+          const bMatch = b.coach === myCoach ? 0 : 1;
+          return aMatch - bMatch;
+        })
+      : visibleTravelers;
+    const sameCoachCount = myCoach
+      ? visibleTravelers.filter(t => t.coach === myCoach && t.userId !== user?.uid).length
+      : 0;
+
     return (
       <ScrollView style={styles.travelersContainer} showsVerticalScrollIndicator={false}>
         <Text style={styles.travelersHeader}>
-          JOINED CARRIAGE 04 • {travelers.length} {travelers.length === 1 ? 'Traveler' : 'Travelers'}
+          {travelers.length} {travelers.length === 1 ? 'Traveler' : 'Travelers'} on this journey
         </Text>
-        {travelers.map((traveler, index) => {
+        <View style={styles.verifiedNote}>
+          <Ionicons name="shield-checkmark" size={14} color="#64748B" />
+          <Text style={styles.verifiedNoteText}>
+            Everyone here is a confirmed check-in on this exact train -- not a self-reported plan.
+          </Text>
+        </View>
+
+        {myCoach && sameCoachCount > 0 && (
+          <View style={styles.sameCoachBanner}>
+            <Ionicons name="people-circle" size={18} color="#0F766E" />
+            <Text style={styles.sameCoachBannerText}>
+              {sameCoachCount} {sameCoachCount === 1 ? 'traveler is' : 'travelers are'} in your carriage (Coach {myCoach})
+            </Text>
+          </View>
+        )}
+
+        {hasPrice && (
+          <View style={styles.splitCard}>
+            <Text style={styles.splitCardLabel}>Split with the group</Text>
+            <View style={styles.splitCardRow}>
+              <View>
+                <Text style={styles.splitCardPrice}>¥{(perPersonPrice as number).toFixed(2)}</Text>
+                <Text style={styles.splitCardSub}>per person, {travelers.length} checked in</Text>
+              </View>
+              {travelers.length > 1 && (savings as number) > 0 && (
+                <View style={styles.splitSavingsBadge}>
+                  <Text style={styles.splitSavingsText}>Save ¥{(savings as number).toFixed(2)}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {sortedTravelers.map((traveler, index) => {
           const badge = getSocialIntentBadge(traveler.socialIntent);
           const isCurrentUser = traveler.userId === user?.uid;
+          const isSameCoach = !isCurrentUser && myCoach !== null && traveler.coach === myCoach;
+          const traveledTogetherBefore = !isCurrentUser && priorCoTravelerIds.has(traveler.userId);
 
           return (
             <View key={`${traveler.userId}-${index}`} style={styles.travelerCard}>
@@ -313,7 +525,18 @@ export default function ChatRoomScreen() {
                       <Text style={styles.youBadgeText}>ME</Text>
                     </View>
                   )}
+                  {isSameCoach && (
+                    <View style={styles.sameCoachBadge}>
+                      <Text style={styles.sameCoachBadgeText}>YOUR CARRIAGE</Text>
+                    </View>
+                  )}
                 </View>
+                {traveledTogetherBefore && (
+                  <View style={styles.traveledBeforeRow}>
+                    <Ionicons name="shield-checkmark" size={12} color="#2563EB" />
+                    <Text style={styles.traveledBeforeText}>Traveled together before</Text>
+                  </View>
+                )}
                 <View style={[styles.socialIntentBadge, { backgroundColor: badge.color + '20' }]}>
                   <Ionicons name={badge.icon as any} size={14} color={badge.color} />
                   <Text style={[styles.socialIntentText, { color: badge.color }]}>
@@ -321,12 +544,90 @@ export default function ChatRoomScreen() {
                   </Text>
                 </View>
               </View>
+              {!isCurrentUser && (
+                <TouchableOpacity
+                  style={styles.travelerMenuButton}
+                  onPress={() => handleTravelerMenu(traveler)}
+                  accessibilityLabel={`More options for ${traveler.userName}`}
+                >
+                  <Ionicons name="ellipsis-vertical" size={18} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
             </View>
           );
         })}
       </ScrollView>
     );
   };
+
+  const renderReportModal = () => (
+    <Modal
+      visible={reportTarget !== null}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setReportTarget(null)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Report {reportTarget?.userName}</Text>
+            <TouchableOpacity onPress={() => setReportTarget(null)}>
+              <Ionicons name="close" size={24} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.modalLabel}>Reason</Text>
+          <View style={styles.coordinationTypes}>
+            {(Object.keys(REPORT_REASON_LABELS) as ReportReason[]).map((reason) => (
+              <TouchableOpacity
+                key={reason}
+                style={[
+                  styles.coordinationTypeButton,
+                  reportReason === reason && styles.coordinationTypeButtonActive,
+                ]}
+                onPress={() => setReportReason(reason)}
+              >
+                <Text
+                  style={[
+                    styles.coordinationTypeText,
+                    reportReason === reason && styles.coordinationTypeTextActive,
+                  ]}
+                >
+                  {REPORT_REASON_LABELS[reason]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.modalLabel}>Details (optional)</Text>
+          <TextInput
+            style={styles.coordinationInput}
+            placeholder="What happened?"
+            placeholderTextColor="#94A3B8"
+            value={reportMessage}
+            onChangeText={setReportMessage}
+            multiline
+            numberOfLines={3}
+          />
+
+          <TouchableOpacity
+            style={[styles.sendCoordinationButton, submittingReport && styles.sendCoordinationButtonDisabled]}
+            onPress={handleSubmitReport}
+            disabled={submittingReport}
+          >
+            {submittingReport ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="flag" size={20} color="#fff" />
+                <Text style={styles.sendCoordinationButtonText}>Submit Report</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
 
   const renderCoordinationModal = () => (
     <Modal
@@ -420,8 +721,12 @@ export default function ChatRoomScreen() {
             </Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.infoButton}>
-          <Ionicons name="information-circle-outline" size={24} color="#64748B" />
+        <TouchableOpacity
+          style={styles.infoButton}
+          onPress={handleOpenStationCard}
+          accessibilityLabel="Open offline station card"
+        >
+          <Ionicons name="qr-code-outline" size={24} color="#64748B" />
         </TouchableOpacity>
       </View>
 
@@ -515,6 +820,7 @@ export default function ChatRoomScreen() {
       )}
 
       {renderCoordinationModal()}
+      {renderReportModal()}
     </SafeAreaView>
   );
 }
@@ -722,6 +1028,26 @@ const styles = StyleSheet.create({
   messageTimeOwn: {
     color: '#D1FAE5',
   },
+  systemMessageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+    maxWidth: '90%',
+    gap: 8,
+  },
+  systemMessageText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#92400E',
+  },
   travelersContainer: {
     flex: 1,
     paddingHorizontal: 16,
@@ -733,6 +1059,99 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginTop: 16,
     marginBottom: 12,
+  },
+  splitCard: {
+    backgroundColor: '#F0FDFA',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+  },
+  splitCardLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0F766E',
+    marginBottom: 6,
+  },
+  splitCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  splitCardPrice: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  splitCardSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  splitSavingsBadge: {
+    backgroundColor: '#2DD4BF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  splitSavingsText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  sameCoachBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDFA',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+    gap: 8,
+  },
+  sameCoachBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F766E',
+    flex: 1,
+  },
+  sameCoachBadge: {
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  sameCoachBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
+  verifiedNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 6,
+  },
+  verifiedNoteText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 15,
+  },
+  traveledBeforeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  traveledBeforeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#2563EB',
   },
   travelerCard: {
     flexDirection: 'row',
@@ -750,6 +1169,9 @@ const styles = StyleSheet.create({
   },
   travelerInfo: {
     flex: 1,
+  },
+  travelerMenuButton: {
+    padding: 8,
   },
   travelerNameRow: {
     flexDirection: 'row',

@@ -19,6 +19,8 @@ import { auth } from '../../firebase/firebase';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser, SocialIntent, SOCIAL_INTENT_LABELS, JourneyImage } from '@/src/context/UserContext';
+import { getTrustScore } from '@/src/services/trustService';
+import { logger } from '@/lib/logger';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IMAGE_SIZE = (SCREEN_WIDTH - 64) / 3;
@@ -34,6 +36,12 @@ export default function Profile() {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [customStatus, setCustomStatus] = useState('');
+  const [verifiedTripsCount, setVerifiedTripsCount] = useState(0);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    getTrustScore(user.uid).then(setVerifiedTripsCount);
+  }, [user?.uid]);
 
   // Request permissions on mount
   useEffect(() => {
@@ -71,20 +79,20 @@ export default function Profile() {
       const hasPermission = await requestImagePermission();
       if (!hasPermission) return;
 
-      console.log('Opening image picker for profile...');
+      logger.log('Opening image picker for profile...');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
         quality: 0.8,
       });
 
-      console.log('Image picker result:', result.canceled ? 'canceled' : 'selected');
+      logger.log('Image picker result:', result.canceled ? 'canceled' : 'selected');
       if (!result.canceled && result.assets && result.assets[0]) {
-        console.log('Updating profile photo with URI:', result.assets[0].uri);
+        logger.log('Updating profile photo with URI:', result.assets[0].uri);
         await updateProfilePhoto(result.assets[0].uri);
       }
     } catch (error) {
-      console.error('Error picking profile image:', error);
+      logger.error('Error picking profile image:', error);
       Alert.alert('Error', 'Failed to pick image. Please try again.');
     }
   }, [updateProfilePhoto]);
@@ -94,16 +102,16 @@ export default function Profile() {
       const hasPermission = await requestImagePermission();
       if (!hasPermission) return;
 
-      console.log('Opening image picker for journey...');
+      logger.log('Opening image picker for journey...');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
         quality: 0.8,
       });
 
-      console.log('Image picker result:', result.canceled ? 'canceled' : 'selected');
+      logger.log('Image picker result:', result.canceled ? 'canceled' : 'selected');
       if (!result.canceled && result.assets && result.assets[0]) {
-        console.log('Adding journey image with URI:', result.assets[0].uri);
+        logger.log('Adding journey image with URI:', result.assets[0].uri);
         const newImage: JourneyImage = {
           id: Date.now().toString(),
           uri: result.assets[0].uri,
@@ -112,7 +120,7 @@ export default function Profile() {
         await addJourneyImage(newImage);
       }
     } catch (error) {
-      console.error('Error picking journey image:', error);
+      logger.error('Error picking journey image:', error);
       Alert.alert('Error', 'Failed to pick image. Please try again.');
     }
   }, [addJourneyImage]);
@@ -152,12 +160,12 @@ export default function Profile() {
       if (user) {
         await updateFirebaseProfile(user, { displayName: editName.trim() });
       }
-    }
+    }  
     setShowEditProfile(false);
   }, [editName, updateProfile, user]);
 
   const handleSelectIntent = useCallback(async (intent: SocialIntent) => {
-    console.log('Selecting social intent:', intent);
+    logger.log('Selecting social intent:', intent);
     try {
       if (intent === 'custom') {
         // Show custom status modal
@@ -165,13 +173,13 @@ export default function Profile() {
         setCustomStatus(profile?.customStatus || '');
         setShowCustomStatus(true);
       } else {
-        console.log('Calling updateSocialIntent...');
+        logger.log('Calling updateSocialIntent...');
         await updateSocialIntent(intent);
-        console.log('Social intent updated successfully');
+        logger.log('Social intent updated successfully');
         setShowSocialIntentPicker(false);
       }
     } catch (error) {
-      console.error('Error updating social intent:', error);
+      logger.error('Error updating social intent:', error);
       Alert.alert('Error', 'Failed to update status. Please try again.');
       setShowSocialIntentPicker(false);
     }
@@ -236,6 +244,16 @@ export default function Profile() {
         <TouchableOpacity onPress={() => setShowSocialIntentPicker(true)}>
           <Text style={styles.socialIntent}>{getSocialIntentText()}</Text>
         </TouchableOpacity>
+
+        {/* Verified Traveler Score -- count of distinct trains this user has confirmed check-ins on */}
+        {verifiedTripsCount > 0 && (
+          <View style={styles.verifiedScoreRow}>
+            <Ionicons name="shield-checkmark" size={16} color="#2563EB" />
+            <Text style={styles.verifiedScoreText}>
+              Verified Traveler · {verifiedTripsCount} confirmed {verifiedTripsCount === 1 ? 'trip' : 'trips'}
+            </Text>
+          </View>
+        )}
 
         {/* Edit Profile Button */}
         <TouchableOpacity
@@ -512,6 +530,23 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     marginBottom: 24,
+  },
+  verifiedScoreRow: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: -12,
+    marginBottom: 20,
+    gap: 6,
+  },
+  verifiedScoreText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563EB',
   },
   editProfileButton: {
     alignSelf: 'center',

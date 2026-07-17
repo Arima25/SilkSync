@@ -22,7 +22,7 @@ def test_station_search_missing_query(client):
 # Test station search calls service correctly
 def test_station_search_success(client):
     mock_result = {"success": True, "stations": [{"name": "北京", "code": "BJP"}]}
-    with patch("main.search_stations", new = AsyncMock(return_value = mock_result)):
+    with patch("routes.trains.search_stations", new = AsyncMock(return_value = mock_result)):
         result = client.get("/api/trains/stations/search?q=beijing")
         assert result.status_code == 200
 
@@ -45,7 +45,7 @@ def test_route_success(client):
         "trains": []
     }
 
-    with patch("main.get_route", new = AsyncMock(return_value = mock_result)):
+    with patch("routes.trains.get_route", new = AsyncMock(return_value = mock_result)):
         result = client.get("/api/trains/route?from_station=北京&to_station=上海&train_date=2026-03-15")
         assert result.status_code == 200
 
@@ -55,7 +55,7 @@ def test_route_success(client):
 # Test current time endpoint
 def test_current_time(client):
     mock_result = {"current_date": "2026-03-15", "current_time": "10:00"}
-    with patch("main.get_current_time", new = AsyncMock(return_value = mock_result)):
+    with patch("routes.trains.get_current_time", new = AsyncMock(return_value = mock_result)):
         result = client.get("/api/trains/current-time")
         assert result.status_code == 200
 
@@ -68,3 +68,34 @@ def test_nearest_stations_missing_city(client):
 def test_transfer_missing_params(client):
     result = client.get("/api/trains/transfer?from_station=北京")
     assert result.status_code == 400
+
+# Test price_for_route missing params
+def test_price_for_route_missing_params(client):
+    result = client.post("/api/trains/price_for_route", json={"from": "北京"})
+    assert result.status_code == 400
+
+# Regression test: price_for_route is an `async def` Flask view -- without the
+# `asgiref` dependency installed, Flask raises RuntimeError on every call to it,
+# regardless of what get_route/query_ticket_price return. This is the only
+# endpoint the mobile app's budget engine actually calls (cost.tsx, itineraries.tsx,
+# plan.tsx), so a regression here breaks the app's core budget feature silently.
+def test_price_for_route_success(client):
+    mock_route = {
+        "trains": [{"train_code": "G1"}],
+    }
+    mock_price = {
+        "data": [{"train_code": "G1", "start_time": "06:30", "prices": {"二等座": "553.5"}}]
+    }
+
+    with patch("routes.trains.get_route", new=AsyncMock(return_value=mock_route)), \
+         patch("routes.trains.query_ticket_price", new=AsyncMock(return_value=mock_price)):
+        result = client.post("/api/trains/price_for_route", json={
+            "from": "北京",
+            "to": "上海",
+            "budget": 1000,
+            "days": 3,
+        })
+        assert result.status_code == 200
+        data = result.get_json()
+        assert "budget_analysis" in data
+        assert "train_price_date" in data

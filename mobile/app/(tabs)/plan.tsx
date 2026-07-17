@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useItinerary } from '@/src/context/ItineraryContext';
+import { logger } from '@/lib/logger';
 import Constants from "expo-constants";
 
 const host = Constants.expoConfig?.hostUri?.split(":")[0];
@@ -114,7 +115,7 @@ export default function PlanScreen() {
 
       const data = await res.json();
 
-      console.log("Budget Engine Response (price_for_route):", data);
+      logger.log("Budget Engine Response (price_for_route):", data);
 
       const price =
         data?.average_ticket_price ??
@@ -138,8 +139,9 @@ export default function PlanScreen() {
         destination: to,
         days,
         soloPrice: price,
-        togetherPrice: price * 0.75,
-        savings: price * 0.25,
+        // Estimate only — actual split depends on how many travelers check in (see chatRoom.tsx).
+        togetherPrice: price / 2,
+        savings: price / 2,
         transportMode: "HSR Train",
         travelStyle: selectedTravelStyle,
         categories: updatedCategories
@@ -147,7 +149,7 @@ export default function PlanScreen() {
 
       router.push('/(tabs)/itineraries');
     } catch (err) {
-      console.log("Budget Engine Error:", err);
+      logger.error("Budget Engine Error:", err);
     }
   };
 

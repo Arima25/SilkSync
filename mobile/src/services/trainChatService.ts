@@ -12,9 +12,9 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../firebase/firebase';
 import { SocialIntent } from '../context/UserContext';
+import { logger } from '@/lib/logger';
 
-// Use 10.0.2.2 for Android emulator to access host machine's localhost
-const API_BASE_URL = 'http://10.0.2.2:5001/api';
+const API_BASE_URL = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
 export interface CheckInData {
   userId: string;
@@ -25,6 +25,7 @@ export interface CheckInData {
   departureStation: string;
   arrivalStation: string;
   socialIntent: SocialIntent;
+  coach?: string;
 }
 
 export interface CheckInResponse {
@@ -38,6 +39,7 @@ export interface Traveler {
   userName: string;
   userPhoto?: string | null;
   socialIntent: SocialIntent;
+  coach?: string | null;
   checkedInAt: string;
 }
 
@@ -51,6 +53,13 @@ export interface ChatMessage {
   journeyId: string;
   messageType?: 'text' | 'coordination' | 'system';
   coordinationType?: 'pickup' | 'meal' | 'dining-car' | 'general';
+}
+
+export interface DisruptionCheckResult {
+  journeyId: string;
+  status: 'normal' | 'disrupted';
+  alternatives: any;
+  justTransitioned: boolean;
 }
 
 /**
@@ -80,7 +89,7 @@ export const checkInToJourney = async (checkInData: CheckInData): Promise<CheckI
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error('Check-in error:', error);
+    logger.error('Check-in error:', error);
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Request timeout - please check your connection');
     }
@@ -102,7 +111,7 @@ export const getTrainTravelers = async (journeyId: string): Promise<Traveler[]> 
     const data = await response.json();
     return data.travelers || [];
   } catch (error) {
-    console.error('Error fetching travelers:', error);
+    logger.error('Error fetching travelers:', error);
     return [];
   }
 };
@@ -133,7 +142,7 @@ export const sendChatMessage = async (
       coordinationType: coordinationType || null,
     });
   } catch (error) {
-    console.error('Error sending message:', error);
+    logger.error('Error sending message:', error);
     throw error;
   }
 };
@@ -180,6 +189,52 @@ export const sendCoordinationMessage = async (
     'coordination',
     coordinationType
   );
+};
+
+/**
+ * Re-check a journey's schedule against 12306 and get back whether it's still
+ * normal or appears disrupted (train missing/invalid in the day's results --
+ * this MCP only exposes timetables, not live delay telemetry).
+ */
+export const checkJourneyDisruption = async (journeyId: string): Promise<DisruptionCheckResult | null> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/journeys/${journeyId}/check-disruption`, {
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to check journey disruption status');
+    }
+
+    return await response.json();
+  } catch (error) {
+    logger.error('Check journey disruption error:', error);
+    return null;
+  }
+};
+
+/**
+ * Turn a get_route()-shaped alternatives payload into a short human-readable summary
+ * for the in-chat disruption alert.
+ */
+export const formatAlternativesSummary = (alternatives: any): string => {
+  if (!alternatives) {
+    return 'No alternative routes were found -- check 12306 directly.';
+  }
+
+  if (alternatives.type === 'direct' && Array.isArray(alternatives.trains) && alternatives.trains.length > 0) {
+    const codes = alternatives.trains.slice(0, 3).map((t: any) => t.train_code).filter(Boolean);
+    return `Other trains on this route: ${codes.join(', ')}.`;
+  }
+
+  if (alternatives.type === 'transfer' && Array.isArray(alternatives.options) && alternatives.options.length > 0) {
+    const via = alternatives.options[0]?.middle_station?.en || alternatives.options[0]?.middle_station?.zh;
+    return via
+      ? `No direct trains -- a connection via ${via} is available.`
+      : 'No direct trains, but a connecting route is available.';
+  }
+
+  return 'No alternative routes were found -- check 12306 directly.';
 };
 
 /**

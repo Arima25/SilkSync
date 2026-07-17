@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useWallet } from '@/src/context/WalletContext';
 import { useItinerary } from '@/src/context/ItineraryContext';
+import { logger } from '@/lib/logger';
 
 const BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL!;
 
@@ -30,8 +31,8 @@ export default function ItinerariesScreen() {
   const style = String(itinerary?.travelStyle || 'budget').trim().toLowerCase();
   const tripBudget = itinerary?.budget || 0;
   const days = itinerary?.days || 3;
-  console.log('travelStyle raw:', itinerary?.travelStyle);
-  console.log('normalized style:', style);  
+  logger.log('travelStyle raw:', itinerary?.travelStyle);
+  logger.log('normalized style:', style);  
   useEffect(() => {
     const fetchBudget = async () => {
       if (!origin || !destination) return;
@@ -51,10 +52,10 @@ export default function ItinerariesScreen() {
         });
 
         const data = await response.json();
-        console.log('Budget Engine Response (price_for_route):', data);
+        logger.log('Budget Engine Response (price_for_route):', data);
         setBackendBudget(data);
       } catch (error) {
-        console.log('Budget API failed in itineraries.tsx', error);
+        logger.log('Budget API failed in itineraries.tsx', error);
         setBackendBudget(null);
       }
     };
@@ -79,7 +80,7 @@ export default function ItinerariesScreen() {
 
   const handleBookNow = () => {
     // TODO: Implement booking logic
-    console.log('Booking route...');
+    logger.log('Booking route...');
   };
 
   const handleSkip = () => {
@@ -210,10 +211,10 @@ Book your trip with SilkSync ✨`;
               <Ionicons name="people" size={16} color="#2eb296" />
               <View>
                 <Text style={styles.savingsTitle}>
-                  Together Price: ¥{formatPrice(togetherPrice)}
+                  Together Price (est.): ¥{formatPrice(togetherPrice)}
                 </Text>
                 <Text style={styles.savingsSubtitle}>
-                  Save ¥{formatPrice(savings)} vs Solo (¥{formatPrice(soloPrice)})
+                  Save up to ¥{formatPrice(savings)} vs Solo (¥{formatPrice(soloPrice)}) — actual savings depend on how many travelers check in
                 </Text>
               </View>
             </View>

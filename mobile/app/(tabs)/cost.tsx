@@ -13,6 +13,7 @@ import {
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useItinerary } from "@/src/context/ItineraryContext";
+import { logger } from "@/lib/logger";
 
 const BACKEND_BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL!;
 
@@ -55,10 +56,10 @@ export default function CostScreen() {
         });
 
         const data = await response.json();
-        console.log("Budget Engine Response (price_for_route):", data);
+        logger.log("Budget Engine Response (price_for_route):", data);
         setBackendBudget(data);
       } catch (error) {
-        console.log("Budget API failed, using fallback estimates");
+        logger.log("Budget API failed, using fallback estimates");
         setBackendBudget(null);
       }
     };
@@ -70,9 +71,9 @@ export default function CostScreen() {
     // Backend budget engine returned values
     const budgetTrip = backendBudget?.budget_analysis?.budget_trip;
     const luxuryTrip = backendBudget?.budget_analysis?.luxury_trip;
-    console.log("style:", style);
-    console.log("budget transport:", budgetTrip?.transport_cost);
-    console.log("luxury transport:", luxuryTrip?.transport_cost);
+    logger.log("style:", style);
+    logger.log("budget transport:", budgetTrip?.transport_cost);
+    logger.log("luxury transport:", luxuryTrip?.transport_cost);
     const trip = style === "luxury" ? luxuryTrip : budgetTrip;
   
     if (trip) {
@@ -121,7 +122,7 @@ export default function CostScreen() {
       }
     };
   
-  console.log("Sending itinerary:", itinerary)
+  logger.log("Sending itinerary:", itinerary)
 
   const formatPrice = (n: number) =>
     Number(n).toLocaleString("en-US", {

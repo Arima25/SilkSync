@@ -75,6 +75,12 @@ export default function TabLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="station-card"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }
